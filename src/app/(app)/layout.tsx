@@ -9,6 +9,7 @@ import {
   Trophy,
   Star,
   Users,
+  HelpCircle,
   Bot,
   LogOut,
   Menu,
@@ -26,6 +27,7 @@ const navItems = [
   { href: '/grupos', label: 'Grupos', icon: Trophy },
   { href: '/especiais', label: 'Especiais', icon: Star },
   { href: '/competidores', label: 'Participantes', icon: Users },
+  { href: '/pontuacao', label: 'Como funciona', icon: HelpCircle },
   { href: '/assistente', label: 'Assistente', icon: Bot },
 ]
 
