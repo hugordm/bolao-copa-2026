@@ -1,10 +1,9 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Match } from '@/lib/types'
 import { syncJogos } from '@/lib/sync/jogos'
+import { isMatchLive } from '@/lib/matchStatus'
 
 const CACHE_MS = 5 * 60 * 1000
-// World Cup matches (incl. extra time/penalties) wrap up well within 2h30.
-const LIVE_WINDOW_MS = 150 * 60 * 1000
 
 export type JogoDoDia = {
   id: string
@@ -63,8 +62,7 @@ export async function getJogosDoDia(supabase: SupabaseClient, date: string): Pro
   const now = Date.now()
 
   return (matches ?? []).map(m => {
-    const kickoff = new Date(m.kickoff_at).getTime()
-    const isLive = !m.is_finished && now >= kickoff && now - kickoff < LIVE_WINDOW_MS
+    const isLive = isMatchLive(m.kickoff_at, m.is_finished, now)
 
     const home = (Array.isArray(m.home_team) ? m.home_team[0] : m.home_team) as TeamRef
     const away = (Array.isArray(m.away_team) ? m.away_team[0] : m.away_team) as TeamRef

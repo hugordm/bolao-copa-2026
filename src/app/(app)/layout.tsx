@@ -6,6 +6,7 @@ import { usePathname, useRouter } from 'next/navigation'
 import {
   Home,
   Footprints,
+  ClipboardList,
   Trophy,
   Star,
   Users,
@@ -24,6 +25,7 @@ import { cn } from '@/lib/utils'
 const navItems = [
   { href: '/dashboard', label: 'Início', icon: Home },
   { href: '/palpites', label: 'Palpites', icon: Footprints },
+  { href: '/meus-palpites', label: 'Meus Palpites', icon: ClipboardList },
   { href: '/grupos', label: 'Grupos', icon: Trophy },
   { href: '/especiais', label: 'Especiais', icon: Star },
   { href: '/competidores', label: 'Participantes', icon: Users },

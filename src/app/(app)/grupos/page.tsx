@@ -47,9 +47,19 @@ type GroupBet = {
 
 const MAX_EDITS = 3
 
-function SortableTeam({ team }: { team: Selecao }) {
+function SortableTeam({
+  team,
+  selected,
+  disabled,
+  onSelect,
+}: {
+  team: Selecao
+  selected: boolean
+  disabled: boolean
+  onSelect: () => void
+}) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
-    useSortable({ id: team.id })
+    useSortable({ id: team.id, disabled })
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -61,12 +71,21 @@ function SortableTeam({ team }: { team: Selecao }) {
     <div
       ref={setNodeRef}
       style={style}
-      className="flex items-center gap-2 rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2"
+      onClick={disabled ? undefined : onSelect}
+      className={`flex items-center gap-2 rounded-lg border px-3 py-2 transition-colors ${
+        disabled
+          ? 'cursor-not-allowed border-zinc-700 bg-zinc-800 opacity-60'
+          : selected
+            ? 'cursor-pointer border-emerald-500 bg-emerald-500/10 animate-pulse'
+            : 'cursor-pointer border-zinc-700 bg-zinc-800 hover:border-zinc-600'
+      }`}
     >
       <button
         {...attributes}
         {...listeners}
-        className="cursor-grab text-zinc-500 hover:text-zinc-300 touch-none"
+        disabled={disabled}
+        onClick={e => e.stopPropagation()}
+        className="cursor-grab text-zinc-500 hover:text-zinc-300 touch-none disabled:cursor-not-allowed"
       >
         <GripVertical className="size-4" />
       </button>
@@ -86,11 +105,13 @@ function GrupoCard({
   bet,
   userId,
   onSaved,
+  terceiraRodadaIniciada,
 }: {
   grupo: Grupo
   bet: GroupBet | null
   userId: string
   onSaved: (bet: GroupBet) => void
+  terceiraRodadaIniciada: boolean
 }) {
   const [teams, setTeams] = useState<Selecao[]>(() => {
     if (bet) {
@@ -104,8 +125,9 @@ function GrupoCard({
     return grupo.teams
   })
   const [saving, setSaving] = useState(false)
+  const [selectedTeamId, setSelectedTeamId] = useState<string | null>(null)
 
-  const bloqueado = bet && bet.edit_count >= MAX_EDITS
+  const bloqueado = (bet && bet.edit_count >= MAX_EDITS) || terceiraRodadaIniciada
   const editesRestantes = bet ? MAX_EDITS - bet.edit_count : MAX_EDITS
   const incompleto = grupo.teams.length < 4
 
@@ -122,6 +144,25 @@ function GrupoCard({
       const newIndex = prev.findIndex(t => t.id === over.id)
       return arrayMove(prev, oldIndex, newIndex)
     })
+  }
+
+  function handleSelectTeam(teamId: string) {
+    if (selectedTeamId === null) {
+      setSelectedTeamId(teamId)
+    } else if (selectedTeamId === teamId) {
+      setSelectedTeamId(null)
+    } else {
+      const fromId = selectedTeamId
+      setTeams(prev => {
+        const idx1 = prev.findIndex(t => t.id === fromId)
+        const idx2 = prev.findIndex(t => t.id === teamId)
+        if (idx1 === -1 || idx2 === -1) return prev
+        const next = [...prev]
+        ;[next[idx1], next[idx2]] = [next[idx2], next[idx1]]
+        return next
+      })
+      setSelectedTeamId(null)
+    }
   }
 
   async function salvar() {
@@ -175,13 +216,23 @@ function GrupoCard({
       <div className="flex items-center justify-between mb-3">
         <h3 className="font-bold text-zinc-50">Grupo {grupo.name}</h3>
         <div className="flex items-center gap-2">
-          {bloqueado ? (
+          {terceiraRodadaIniciada ? (
+            <Badge className="bg-red-500/20 text-red-400 border-red-500/30">
+              🔒 3ª rodada iniciada — ordem bloqueada
+            </Badge>
+          ) : bloqueado ? (
             <Badge className="bg-red-500/20 text-red-400 border-red-500/30">Bloqueado</Badge>
           ) : (
             <span className="text-xs text-zinc-500">{editesRestantes}x restante{editesRestantes !== 1 ? 's' : ''}</span>
           )}
         </div>
       </div>
+
+      {!bloqueado && (
+        <p className="mb-2 text-xs text-zinc-500">
+          Clique em dois times para trocar de posição, ou arraste para reordenar
+        </p>
+      )}
 
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
         <SortableContext items={teams.map(t => t.id)} strategy={verticalListSortingStrategy}>
@@ -190,7 +241,12 @@ function GrupoCard({
               <div key={team.id} className="flex items-center gap-2">
                 <span className="w-5 text-xs text-zinc-600 font-bold">{idx + 1}º</span>
                 <div className="flex-1">
-                  <SortableTeam team={team} />
+                  <SortableTeam
+                    team={team}
+                    selected={selectedTeamId === team.id}
+                    disabled={!!bloqueado}
+                    onSelect={() => handleSelectTeam(team.id)}
+                  />
                 </div>
               </div>
             ))}
@@ -215,6 +271,7 @@ export default function GruposPage() {
   const [bets, setBets] = useState<Record<string, GroupBet>>({})
   const [userId, setUserId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  const [terceiraRodada, setTerceiraRodada] = useState<Record<string, boolean>>({})
 
   useEffect(() => {
     async function load() {
@@ -223,7 +280,7 @@ export default function GruposPage() {
       if (!user) return
       setUserId(user.id)
 
-      const [{ data: teamsData }, { data: betData }] = await Promise.all([
+      const [{ data: teamsData }, { data: betData }, { data: groupMatchesData }] = await Promise.all([
         supabase
           .from('teams')
           .select('id, name, flag_url, group_name')
@@ -233,7 +290,27 @@ export default function GruposPage() {
           .from('group_order_bets')
           .select('id, group_name, team_1st_id, team_2nd_id, team_3rd_id, team_4th_id, edit_count')
           .eq('user_id', user.id),
+        supabase
+          .from('matches')
+          .select('group_name, kickoff_at')
+          .eq('phase', 'groups')
+          .order('kickoff_at', { ascending: true }),
       ])
+
+      const now = Date.now()
+      const matchesPorGrupo = new Map<string, string[]>()
+      for (const m of groupMatchesData ?? []) {
+        if (!m.group_name) continue
+        const list = matchesPorGrupo.get(m.group_name) ?? []
+        list.push(m.kickoff_at)
+        matchesPorGrupo.set(m.group_name, list)
+      }
+      const terceiraRodadaMap: Record<string, boolean> = {}
+      for (const [groupName, kickoffs] of matchesPorGrupo) {
+        const terceiroJogo = kickoffs[2]
+        terceiraRodadaMap[groupName] = !!terceiroJogo && new Date(terceiroJogo).getTime() <= now
+      }
+      setTerceiraRodada(terceiraRodadaMap)
 
       const groupMap = new Map<string, Selecao[]>()
       for (const t of teamsData ?? []) {
@@ -281,6 +358,7 @@ export default function GruposPage() {
               bet={bets[g.name] ?? null}
               userId={userId ?? ''}
               onSaved={handleSaved}
+              terceiraRodadaIniciada={terceiraRodada[g.name] ?? false}
             />
           ))}
         </div>

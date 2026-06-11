@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { Loader2, Bot } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
+import { isMatchLive } from '@/lib/matchStatus'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
@@ -63,10 +64,6 @@ function formatDateTime(iso: string): string {
   }).format(new Date(iso))
 }
 
-function prazoEncerrado(kickoffAt: string): boolean {
-  return new Date(kickoffAt).getTime() - Date.now() < 5 * 60 * 1000
-}
-
 function singleOrFirst<T>(value: T | T[] | null | undefined): T | undefined {
   return Array.isArray(value) ? value[0] : value ?? undefined
 }
@@ -90,6 +87,28 @@ function EdicoesBadge({ editCount }: { editCount: number }) {
   )
 }
 
+function FechamentoInfo({ kickoffAt, now }: { kickoffAt: string; now: number }) {
+  const totalMinutos = Math.max(0, Math.floor((new Date(kickoffAt).getTime() - now) / 60000))
+
+  if (totalMinutos < 5) {
+    return <p className="mt-2 text-xs font-semibold text-amber-400">🔒 Fechando...</p>
+  }
+  if (totalMinutos < 60) {
+    return (
+      <p className="mt-2 text-xs font-semibold text-red-400 animate-pulse">
+        ⚠️ Fecha em {totalMinutos} minuto{totalMinutos === 1 ? '' : 's'}!
+      </p>
+    )
+  }
+  const horas = Math.floor(totalMinutos / 60)
+  const minutos = totalMinutos % 60
+  return (
+    <p className="mt-2 text-xs text-zinc-500">
+      Fecha em {horas} hora{horas === 1 ? '' : 's'} {minutos} minuto{minutos === 1 ? '' : 's'}
+    </p>
+  )
+}
+
 export default function PalpitesPage() {
   const [matches, setMatches] = useState<Match[]>([])
   const [bets, setBets] = useState<Record<string, Bet>>({})
@@ -104,6 +123,12 @@ export default function PalpitesPage() {
     matchId: string
     sugestao: { home_score: number; away_score: number; justificativa: string } | null
   }>({ open: false, matchId: '', sugestao: null })
+  const [now, setNow] = useState(() => Date.now())
+
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 30000)
+    return () => clearInterval(id)
+  }, [])
 
   useEffect(() => {
     async function load() {
@@ -246,7 +271,7 @@ export default function PalpitesPage() {
   const matchesFiltrados = matches.filter(m => {
     if (filtro === 'hoje') return dataBrasilia(m.kickoff_at) === hoje
     if (filtro === 'amanha') return dataBrasilia(m.kickoff_at) === amanha
-    if (filtro === 'pendentes') return !prazoEncerrado(m.kickoff_at) && !bets[m.id]
+    if (filtro === 'pendentes') return !m.is_finished && !isMatchLive(m.kickoff_at, m.is_finished, now) && !bets[m.id]
     if (filtro === 'encerrados') return m.is_finished
     return true
   })
@@ -289,8 +314,10 @@ export default function PalpitesPage() {
         <div className="space-y-3">
           {matchesFiltrados.map(match => {
             const bet = bets[match.id]
-            const encerrado = prazoEncerrado(match.kickoff_at)
+            const aoVivo = isMatchLive(match.kickoff_at, match.is_finished, now)
+            const finalizado = match.is_finished
             const bloqueado = bet && bet.edit_count >= MAX_EDITS
+            const inputsBloqueados = !!bloqueado || aoVivo
             const inp = getInput(match.id)
 
             return (
@@ -325,8 +352,13 @@ export default function PalpitesPage() {
                   )}
                 </div>
 
-                {!encerrado ? (
+                {!finalizado ? (
                   <>
+                    {aoVivo && (
+                      <Badge className="mb-3 bg-red-500/20 text-red-400 border-red-500/30 animate-pulse">
+                        🔴 AO VIVO — palpites bloqueados
+                      </Badge>
+                    )}
                     <div className="flex items-center gap-3 mb-3">
                       <Input
                         type="number"
@@ -334,7 +366,7 @@ export default function PalpitesPage() {
                         placeholder="0"
                         value={inp.home}
                         onChange={e => setInput(match.id, 'home', e.target.value)}
-                        disabled={!!bloqueado}
+                        disabled={inputsBloqueados}
                         className="w-16 text-center bg-zinc-800 border-zinc-700 text-zinc-50 h-9"
                       />
                       <span className="text-zinc-500 font-bold">×</span>
@@ -344,7 +376,7 @@ export default function PalpitesPage() {
                         placeholder="0"
                         value={inp.away}
                         onChange={e => setInput(match.id, 'away', e.target.value)}
-                        disabled={!!bloqueado}
+                        disabled={inputsBloqueados}
                         className="w-16 text-center bg-zinc-800 border-zinc-700 text-zinc-50 h-9"
                       />
                       <EdicoesBadge editCount={bet?.edit_count ?? 0} />
@@ -352,7 +384,7 @@ export default function PalpitesPage() {
                     <div className="flex gap-2">
                       <Button
                         size="sm"
-                        disabled={!!bloqueado || saving[match.id]}
+                        disabled={inputsBloqueados || saving[match.id]}
                         onClick={() => salvarPalpite(match)}
                         className="bg-emerald-500 hover:bg-emerald-600 text-white"
                       >
@@ -361,7 +393,7 @@ export default function PalpitesPage() {
                       <Button
                         size="sm"
                         variant="outline"
-                        disabled={loadingIa[match.id]}
+                        disabled={loadingIa[match.id] || aoVivo}
                         onClick={() => pedirSugestaoIa(match.id)}
                         className="border-zinc-700 text-zinc-300 hover:bg-zinc-800"
                       >
@@ -372,6 +404,7 @@ export default function PalpitesPage() {
                         )}
                       </Button>
                     </div>
+                    {!aoVivo && <FechamentoInfo kickoffAt={match.kickoff_at} now={now} />}
                   </>
                 ) : (
                   <div className="flex items-center gap-3 flex-wrap">
