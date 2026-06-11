@@ -33,12 +33,15 @@ export async function syncArtilharia(supabase: SupabaseClient): Promise<{ update
 
     for (const p of zt.squad) {
       const existing = playerByKey.get(`${teamId}:${p.name}`)
-      if (!existing || existing.goals_in_tournament === p.goals) continue
+      if (!existing || p.goals <= existing.goals_in_tournament) continue
 
+      // Only overwrite if the API value is greater, so manually entered
+      // goal counts are never reduced by a stale/zero value from the API.
       const { error } = await supabase
         .from('players')
         .update({ goals_in_tournament: p.goals })
         .eq('id', existing.id)
+        .lt('goals_in_tournament', p.goals)
       if (error) continue
       updated++
     }

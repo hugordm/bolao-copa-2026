@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
-import { Clock, RotateCcw, Lock, Target, ListOrdered } from 'lucide-react'
+import { Clock, RotateCcw, Lock, Target, ListOrdered, Info } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 
 type ScoreConfig = {
@@ -134,6 +134,19 @@ export default function PontuacaoPage() {
 
       <section>
         <SectionTitle>Classificação dos Grupos</SectionTitle>
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3 }}
+          className="mb-3 flex items-start gap-3 rounded-xl border border-zinc-800 bg-zinc-900 px-4 py-3"
+        >
+          <Info className="size-5 shrink-0 mt-0.5 text-zinc-400" />
+          <p className="text-sm text-zinc-300">
+            Na Copa 2026, com 48 seleções, além do 1º e 2º de cada grupo, os{' '}
+            <span className="font-semibold text-zinc-50">8 melhores terceiros colocados</span>{' '}
+            também se classificam para os 32avos de final.
+          </p>
+        </motion.div>
         <div className="space-y-3">
           <RegraCard
             index={3}
@@ -153,7 +166,7 @@ export default function PontuacaoPage() {
             index={5}
             icon="🏆"
             title="Ordem exata (1º ao 4º)"
-            description="Acertou a classificação completa do grupo, do 1º ao 4º colocado"
+            description="Acertou a classificação completa do grupo. Para o 3º lugar, só precisa acertar a posição exata (3º x 4º) se esse time estiver entre os 8 melhores terceiros e se classificar"
             pontos={config.pts_group_order_exact}
           />
         </div>

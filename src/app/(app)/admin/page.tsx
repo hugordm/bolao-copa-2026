@@ -673,6 +673,7 @@ function TabTabelaGrupos() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [populating, setPopulating] = useState(false)
+  const [calculating, setCalculating] = useState(false)
 
   async function load(g: string) {
     setLoading(true)
@@ -797,6 +798,18 @@ function TabTabelaGrupos() {
     }
   }
 
+  async function calcularPontosGrupos() {
+    setCalculating(true)
+    try {
+      const data = await postJson('/api/admin/calcular-pontos-grupos')
+      toast.success(`Pontos calculados! ${data.updated_bets} palpite(s) de grupo atualizados.`)
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'Erro ao calcular pontos')
+    } finally {
+      setCalculating(false)
+    }
+  }
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-2 flex-wrap">
@@ -882,6 +895,15 @@ function TabTabelaGrupos() {
         className="w-full bg-emerald-500 hover:bg-emerald-600 text-white"
       >
         {saving ? <Loader2 className="size-4 animate-spin" /> : `Salvar grupo ${grupo}`}
+      </Button>
+
+      <Button
+        onClick={calcularPontosGrupos}
+        disabled={calculating}
+        variant="outline"
+        className="w-full border-zinc-700 text-zinc-300 hover:bg-zinc-800"
+      >
+        {calculating ? <Loader2 className="size-4 animate-spin" /> : 'Calcular pontos dos grupos'}
       </Button>
     </div>
   )
