@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
-import { Clock, RotateCcw, Lock } from 'lucide-react'
+import { Clock, RotateCcw, Lock, Target, ListOrdered } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 
 type ScoreConfig = {
@@ -208,7 +208,7 @@ export default function PontuacaoPage() {
           >
             <RotateCcw className="size-5 shrink-0 mt-0.5 text-zinc-400" />
             <p className="text-sm text-zinc-300">
-              <span className="font-semibold text-zinc-50">Alterações:</span> máximo de 3 alterações por palpite
+              <span className="font-semibold text-zinc-50">Alterações:</span> máximo de 3 alterações por palpite de placar
             </p>
           </motion.div>
           <motion.div
@@ -219,7 +219,29 @@ export default function PontuacaoPage() {
           >
             <Lock className="size-5 shrink-0 mt-0.5 text-zinc-400" />
             <p className="text-sm text-zinc-300">
-              <span className="font-semibold text-zinc-50">Palpites especiais:</span> fecham antes do 1º jogo da copa
+              <span className="font-semibold text-zinc-50">Palpites especiais (campeão e artilheiro da copa):</span> fecham ao fim da fase de grupos
+            </p>
+          </motion.div>
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 12 * 0.05, duration: 0.3 }}
+            className="flex items-start gap-3 rounded-xl border border-zinc-800 bg-zinc-900 px-4 py-3"
+          >
+            <Target className="size-5 shrink-0 mt-0.5 text-zinc-400" />
+            <p className="text-sm text-zinc-300">
+              <span className="font-semibold text-zinc-50">Artilheiro por seleção:</span> pode alterar até 5 vezes, mas fecha quando as oitavas de final começarem
+            </p>
+          </motion.div>
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 13 * 0.05, duration: 0.3 }}
+            className="flex items-start gap-3 rounded-xl border border-zinc-800 bg-zinc-900 px-4 py-3"
+          >
+            <ListOrdered className="size-5 shrink-0 mt-0.5 text-zinc-400" />
+            <p className="text-sm text-zinc-300">
+              <span className="font-semibold text-zinc-50">Ordem dos grupos:</span> fecha na 3ª rodada de cada grupo
             </p>
           </motion.div>
         </div>
@@ -230,7 +252,7 @@ export default function PontuacaoPage() {
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 12 * 0.05, duration: 0.3 }}
+          transition={{ delay: 14 * 0.05, duration: 0.3 }}
           className="rounded-xl border border-emerald-500/30 bg-emerald-500/5 px-4 py-4"
         >
           <p className="text-sm text-zinc-300">

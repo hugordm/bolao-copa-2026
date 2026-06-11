@@ -97,20 +97,20 @@ function TabCampeao({
   userId,
   bets,
   setBets,
-  copaIniciada,
+  gruposTerminados,
   quartasTerminadas,
 }: {
   teams: Team[]
   userId: string
   bets: Record<string, SpecialBet>
   setBets: React.Dispatch<React.SetStateAction<Record<string, SpecialBet>>>
-  copaIniciada: boolean
+  gruposTerminados: boolean
   quartasTerminadas: boolean
 }) {
   const [selected, setSelected] = useState<string | null>(() => bets['champion']?.team_id ?? null)
   const [saving, setSaving] = useState(false)
   const bet = bets['champion']
-  const bloqueado = bet?.is_locked || (bet && bet.edit_count >= MAX_EDITS) || copaIniciada || quartasTerminadas
+  const bloqueado = bet?.is_locked || (bet && bet.edit_count >= MAX_EDITS) || gruposTerminados || quartasTerminadas
   const restantes = bet ? MAX_EDITS - bet.edit_count : MAX_EDITS
 
   useEffect(() => {
@@ -135,8 +135,8 @@ function TabCampeao({
     <div className="space-y-4">
       {quartasTerminadas ? (
         <AvisoBloqueio>⚠️ Palpite de campeão encerrado após as quartas de final</AvisoBloqueio>
-      ) : copaIniciada ? (
-        <AvisoBloqueio>⚠️ Palpites encerrados — copa já iniciou</AvisoBloqueio>
+      ) : gruposTerminados ? (
+        <AvisoBloqueio>🔒 Palpites de campeão encerrados — fase de grupos encerrada</AvisoBloqueio>
       ) : null}
       <div className="flex items-center justify-between">
         <p className="text-sm text-zinc-400">Selecione o campeão da Copa 2026</p>
@@ -186,19 +186,19 @@ function TabArtilheiro({
   userId,
   bets,
   setBets,
-  copaIniciada,
+  gruposTerminados,
 }: {
   players: Player[]
   userId: string
   bets: Record<string, SpecialBet>
   setBets: React.Dispatch<React.SetStateAction<Record<string, SpecialBet>>>
-  copaIniciada: boolean
+  gruposTerminados: boolean
 }) {
   const [query, setQuery] = useState('')
   const [selected, setSelected] = useState<string | null>(() => bets['top_scorer']?.player_id ?? null)
   const [saving, setSaving] = useState(false)
   const bet = bets['top_scorer']
-  const bloqueado = bet?.is_locked || (bet && bet.edit_count >= MAX_EDITS) || copaIniciada
+  const bloqueado = bet?.is_locked || (bet && bet.edit_count >= MAX_EDITS) || gruposTerminados
   const restantes = bet ? MAX_EDITS - bet.edit_count : MAX_EDITS
 
   useEffect(() => {
@@ -226,8 +226,8 @@ function TabArtilheiro({
 
   return (
     <div className="space-y-4">
-      {copaIniciada && (
-        <AvisoBloqueio>⚠️ Palpites encerrados — copa já iniciou</AvisoBloqueio>
+      {gruposTerminados && (
+        <AvisoBloqueio>🔒 Palpites de artilheiro da copa encerrados — fase de grupos encerrada</AvisoBloqueio>
       )}
       <div className="flex items-center justify-between">
         <p className="text-sm text-zinc-400">Artilheiro da Copa 2026</p>
@@ -343,7 +343,7 @@ function TabArtilheiroPorSelecao({
     <div className="space-y-4">
       {oitavasIniciadas && (
         <AvisoBloqueio>
-          ⚠️ Palpites de artilheiro por seleção encerrados após o início das oitavas
+          🔒 Palpites de artilheiro por seleção encerrados após o início das oitavas
         </AvisoBloqueio>
       )}
       <p className="text-sm text-zinc-400">
@@ -433,7 +433,7 @@ export default function EspeciaisPage() {
   const [userId, setUserId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [oitavasIniciadas, setOitavasIniciadas] = useState(false)
-  const [copaIniciada, setCopaIniciada] = useState(false)
+  const [gruposTerminados, setGruposTerminados] = useState(false)
   const [quartasTerminadas, setQuartasTerminadas] = useState(false)
   const { bets, setBets } = useBets(userId)
 
@@ -452,10 +452,10 @@ export default function EspeciaisPage() {
       }
       const PAGE_SIZE = 1000
       const playersData: PlayerRow[] = []
-      const [{ data: teamsData }, { data: r16FinishedData }, { data: anyFinishedData }, { data: sfFinishedData }] = await Promise.all([
+      const [{ data: teamsData }, { data: r16FinishedData }, { data: unfinishedGroupData }, { data: sfFinishedData }] = await Promise.all([
         supabase.from('teams').select('id, name, flag_url, is_eliminated').order('name'),
         supabase.from('matches').select('id').in('phase', ['r16', 'qf', 'sf', 'final']).eq('is_finished', true).limit(1),
-        supabase.from('matches').select('id').eq('is_finished', true).limit(1),
+        supabase.from('matches').select('id').eq('phase', 'groups').eq('is_finished', false).limit(1),
         supabase.from('matches').select('id').in('phase', ['sf', 'final']).eq('is_finished', true).limit(1),
         (async () => {
           for (let from = 0; ; from += PAGE_SIZE) {
@@ -473,7 +473,7 @@ export default function EspeciaisPage() {
       ])
 
       setOitavasIniciadas(!!r16FinishedData?.length)
-      setCopaIniciada(!!anyFinishedData?.length)
+      setGruposTerminados(!unfinishedGroupData?.length)
       setQuartasTerminadas(!!sfFinishedData?.length)
       if (teamsData) setTeams(teamsData)
       if (playersData.length) {
@@ -533,13 +533,13 @@ export default function EspeciaisPage() {
               userId={userId}
               bets={bets}
               setBets={setBets}
-              copaIniciada={copaIniciada}
+              gruposTerminados={gruposTerminados}
               quartasTerminadas={quartasTerminadas}
             />
           </TabsContent>
 
           <TabsContent value="artilheiro">
-            <TabArtilheiro players={activePlayers} userId={userId} bets={bets} setBets={setBets} copaIniciada={copaIniciada} />
+            <TabArtilheiro players={activePlayers} userId={userId} bets={bets} setBets={setBets} gruposTerminados={gruposTerminados} />
           </TabsContent>
 
           <TabsContent value="por-selecao">

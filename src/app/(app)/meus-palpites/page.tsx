@@ -298,13 +298,14 @@ function GroupCard({
 // Tab 3 — Especiais
 // ---------------------------------------------------------------------------
 
-type EspecialStatus = 'acertou' | 'errou' | 'pendente' | 'sem_palpite'
+type EspecialStatus = 'acertou' | 'errou' | 'pendente' | 'sem_palpite' | 'encerrado'
 
 const ESPECIAL_STATUS_INFO: Record<EspecialStatus, { color: StatusColor; label: string }> = {
   acertou: { color: 'emerald', label: '✅ Acertou' },
   errou: { color: 'red', label: '❌ Errou' },
   pendente: { color: 'zinc', label: '⏳ Pendente' },
   sem_palpite: { color: 'zinc', label: '🔓 Sem palpite' },
+  encerrado: { color: 'zinc', label: '🔒 Encerrado após oitavas' },
 }
 
 function getEspecialStatus(bet: SpecialBet | undefined): EspecialStatus {
@@ -316,13 +317,14 @@ function getEspecialStatus(bet: SpecialBet | undefined): EspecialStatus {
 function EspecialCard({
   title,
   bet,
+  status,
   children,
 }: {
   title: string
   bet: SpecialBet | undefined
+  status: EspecialStatus
   children: React.ReactNode
 }) {
-  const status = getEspecialStatus(bet)
   const info = ESPECIAL_STATUS_INFO[status]
 
   return (
@@ -612,6 +614,11 @@ export default function MeusPalpitesPage() {
     })
   }, [matches, betsByMatch, filtroPlacar])
 
+  const oitavasIniciadas = useMemo(
+    () => matches.some(m => (['r16', 'qf', 'sf', 'final'] as Phase[]).includes(m.phase) && m.is_finished),
+    [matches]
+  )
+
   const championBet = specialBets.find(b => b.bet_type === 'champion')
   const topScorerBet = specialBets.find(b => b.bet_type === 'top_scorer')
   const teamScorerBets = specialBets.filter(b => b.bet_type === 'team_scorer')
@@ -702,7 +709,7 @@ export default function MeusPalpitesPage() {
 
           <TabsContent value="especiais">
             <div className="space-y-4">
-              <EspecialCard title="🏆 Campeão" bet={championBet}>
+              <EspecialCard title="🏆 Campeão" bet={championBet} status={getEspecialStatus(championBet)}>
                 {championTeam ? (
                   <div className="flex items-center gap-2">
                     <Flag url={championTeam.flag_url} alt="" />
@@ -713,7 +720,7 @@ export default function MeusPalpitesPage() {
                 )}
               </EspecialCard>
 
-              <EspecialCard title="⚽ Artilheiro da Copa" bet={topScorerBet}>
+              <EspecialCard title="⚽ Artilheiro da Copa" bet={topScorerBet} status={getEspecialStatus(topScorerBet)}>
                 {topScorerPlayer ? (
                   <div className="flex items-center gap-2">
                     <Flag url={topScorerTeam?.flag_url} alt="" />
@@ -741,8 +748,9 @@ export default function MeusPalpitesPage() {
                     {teamScorerBets.map(bet => {
                       const team = bet.team_id ? teamsById.get(bet.team_id) : undefined
                       const player = bet.player
+                      const status = oitavasIniciadas && !bet.is_locked ? 'encerrado' : getEspecialStatus(bet)
                       return (
-                        <EspecialCard key={bet.id} title={`Artilheiro — ${team?.name ?? '?'}`} bet={bet}>
+                        <EspecialCard key={bet.id} title={`Artilheiro — ${team?.name ?? '?'}`} bet={bet} status={status}>
                           <div className="flex items-center gap-2">
                             <Flag url={team?.flag_url} alt="" />
                             <span className="text-sm font-medium text-zinc-200">{player?.name ?? '?'}</span>
