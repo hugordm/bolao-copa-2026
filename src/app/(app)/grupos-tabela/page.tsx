@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
 import { createClient } from '@/lib/supabase/client'
+import { Badge } from '@/components/ui/badge'
+import { selecionarMelhoresTerceiros } from '@/lib/scoring'
 
 type Time = { name: string; flag_url: string | null }
 
@@ -16,6 +18,8 @@ type StandingRow = {
   goals_for: number
   goal_difference: number
   points: number
+  position: number
+  is_best_third: boolean
 }
 
 type Grupo = {
@@ -29,13 +33,33 @@ function Flag({ url, alt }: { url: string | null | undefined; alt: string }) {
   return <img src={url} alt={alt} className="size-5 rounded-full object-cover shrink-0" />
 }
 
+/** Orders a group's teams by their stored `position` (1..N) when it's a valid
+ * permutation, otherwise falls back to points -> goal difference -> goals for. */
+function ordenarGrupo(teams: StandingRow[]): StandingRow[] {
+  const positions = teams.map(t => t.position)
+  const validas =
+    positions.every(p => p >= 1 && p <= teams.length) &&
+    new Set(positions).size === teams.length
+
+  if (validas) {
+    return [...teams].sort((a, b) => a.position - b.position)
+  }
+  return [...teams].sort(
+    (a, b) =>
+      b.points - a.points ||
+      b.goal_difference - a.goal_difference ||
+      b.goals_for - a.goals_for
+  )
+}
+
 export default function GruposTabelaPage() {
   const [grupos, setGrupos] = useState<Grupo[]>([])
+  const [groupStageFinished, setGroupStageFinished] = useState(false)
   const [loading, setLoading] = useState(true)
 
   const fetchStandings = useCallback(async () => {
     const supabase = createClient()
-    const [{ data: teamsData }, { data: standingsData }] = await Promise.all([
+    const [{ data: teamsData }, { data: standingsData }, { data: matchesData }] = await Promise.all([
       supabase
         .from('teams')
         .select('id, name, flag_url, group_name')
@@ -44,7 +68,8 @@ export default function GruposTabelaPage() {
         .order('name', { ascending: true }),
       supabase
         .from('group_standings')
-        .select('team_id, played, won, drawn, lost, goals_for, goal_difference, points'),
+        .select('team_id, played, won, drawn, lost, goals_for, goal_difference, points, position, is_best_third'),
+      supabase.from('matches').select('is_finished').eq('phase', 'groups'),
     ])
 
     type StandingData = {
@@ -56,6 +81,8 @@ export default function GruposTabelaPage() {
       goals_for: number
       goal_difference: number
       points: number
+      position: number
+      is_best_third: boolean
     }
     const standingsMap = new Map<string, StandingData>(
       (standingsData ?? []).map((s: StandingData) => [s.team_id, s])
@@ -75,6 +102,8 @@ export default function GruposTabelaPage() {
         goals_for: s?.goals_for ?? 0,
         goal_difference: s?.goal_difference ?? 0,
         points: s?.points ?? 0,
+        position: s?.position ?? 0,
+        is_best_third: s?.is_best_third ?? false,
       }
       const list = groupMap.get(t.group_name) ?? []
       list.push(row)
@@ -83,16 +112,10 @@ export default function GruposTabelaPage() {
 
     const gruposList: Grupo[] = Array.from(groupMap.entries())
       .sort(([a], [b]) => a.localeCompare(b))
-      .map(([name, teams]) => ({
-        name,
-        teams: [...teams].sort(
-          (a, b) =>
-            b.points - a.points ||
-            b.goal_difference - a.goal_difference ||
-            b.goals_for - a.goals_for
-        ),
-      }))
+      .map(([name, teams]) => ({ name, teams: ordenarGrupo(teams) }))
 
+    const groupMatches = matchesData ?? []
+    setGroupStageFinished(groupMatches.length > 0 && groupMatches.every(m => m.is_finished))
     setGrupos(gruposList)
     setLoading(false)
   }, [])
@@ -104,10 +127,17 @@ export default function GruposTabelaPage() {
     const channel = supabase
       .channel('grupos-tabela-realtime')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'group_standings' }, fetchStandings)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'matches' }, fetchStandings)
       .subscribe()
 
     return () => { supabase.removeChannel(channel) }
   }, [fetchStandings])
+
+  // 8 melhores terceiros (apenas relevante quando a fase de grupos termina)
+  const thirdPlacedByGroup = grupos
+    .map(g => g.teams[2])
+    .filter((t): t is StandingRow => !!t)
+  const bestThirdIds = groupStageFinished ? selecionarMelhoresTerceiros(thirdPlacedByGroup) : new Set<string>()
 
   return (
     <div className="max-w-5xl mx-auto px-4 py-6">
@@ -142,28 +172,57 @@ export default function GruposTabelaPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-zinc-800">
-                  {g.teams.map((t, idx) => (
-                    <motion.tr
-                      key={t.team_id}
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      transition={{ duration: 0.2 }}
-                      className={idx < 2 ? 'bg-emerald-500/5' : ''}
-                    >
-                      <td className="px-3 py-2">
-                        <div className="flex items-center gap-2 min-w-0">
-                          <Flag url={t.team.flag_url} alt="" />
-                          <span className="truncate font-medium text-zinc-100">{t.team.name}</span>
-                        </div>
-                      </td>
-                      <td className="px-1.5 py-2 text-center tabular-nums text-zinc-300">{t.played}</td>
-                      <td className="px-1.5 py-2 text-center tabular-nums text-zinc-300">{t.won}</td>
-                      <td className="px-1.5 py-2 text-center tabular-nums text-zinc-300">{t.drawn}</td>
-                      <td className="px-1.5 py-2 text-center tabular-nums text-zinc-300">{t.lost}</td>
-                      <td className="px-1.5 py-2 text-center tabular-nums text-zinc-300">{t.goal_difference}</td>
-                      <td className="px-1.5 py-2 text-center font-bold tabular-nums text-zinc-50">{t.points}</td>
-                    </motion.tr>
-                  ))}
+                  {g.teams.map((t, idx) => {
+                    let rowClass = ''
+                    let badge: { text: string; className: string } | null = null
+
+                    if (!groupStageFinished) {
+                      if (idx === 0 || idx === 1) {
+                        rowClass = 'bg-emerald-500/5'
+                      } else if (idx === 2) {
+                        rowClass = 'bg-yellow-900/40 border-l-2 border-yellow-500'
+                        badge = { text: '❓ Possível', className: 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20' }
+                      } else if (idx === 3) {
+                        rowClass = 'bg-red-900/40 border-l-2 border-red-500'
+                        badge = { text: '✗ Eliminado', className: 'bg-red-500/10 text-red-400 border-red-500/20' }
+                      }
+                    } else {
+                      const classificado = idx === 0 || idx === 1 || (idx === 2 && bestThirdIds.has(t.team_id))
+                      if (classificado) {
+                        rowClass = 'bg-emerald-900/40 border-l-2 border-emerald-500'
+                        badge = { text: '✓ Classificado', className: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' }
+                      } else {
+                        rowClass = 'bg-red-900/40 border-l-2 border-red-500'
+                        badge = { text: '✗ Eliminado', className: 'bg-red-500/10 text-red-400 border-red-500/20' }
+                      }
+                    }
+
+                    return (
+                      <motion.tr
+                        key={t.team_id}
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        transition={{ duration: 0.2 }}
+                        className={rowClass}
+                      >
+                        <td className="px-3 py-2">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <Flag url={t.team.flag_url} alt="" />
+                            <span className="truncate font-medium text-zinc-100">{t.team.name}</span>
+                            {badge && (
+                              <Badge className={`ml-auto shrink-0 ${badge.className}`}>{badge.text}</Badge>
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-1.5 py-2 text-center tabular-nums text-zinc-300">{t.played}</td>
+                        <td className="px-1.5 py-2 text-center tabular-nums text-zinc-300">{t.won}</td>
+                        <td className="px-1.5 py-2 text-center tabular-nums text-zinc-300">{t.drawn}</td>
+                        <td className="px-1.5 py-2 text-center tabular-nums text-zinc-300">{t.lost}</td>
+                        <td className="px-1.5 py-2 text-center tabular-nums text-zinc-300">{t.goal_difference}</td>
+                        <td className="px-1.5 py-2 text-center font-bold tabular-nums text-zinc-50">{t.points}</td>
+                      </motion.tr>
+                    )
+                  })}
                 </tbody>
               </table>
             </div>

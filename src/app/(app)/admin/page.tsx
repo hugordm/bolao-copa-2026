@@ -1,9 +1,9 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
-import { Loader2, Search, RefreshCw } from 'lucide-react'
+import { Loader2, Search, RefreshCw, ChevronUp, ChevronDown } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -637,6 +637,18 @@ type StandingTeam = {
   team_id: string
   name: string
   flag_url: string | null
+  position: number
+}
+
+type ThirdPlaceTeam = {
+  team_id: string
+  name: string
+  flag_url: string | null
+  group_name: string
+  points: number
+  goal_difference: number
+  goals_for: number
+  is_best_third: boolean
 }
 
 type StandingForm = {
@@ -674,6 +686,11 @@ function TabTabelaGrupos() {
   const [saving, setSaving] = useState(false)
   const [populating, setPopulating] = useState(false)
   const [calculating, setCalculating] = useState(false)
+  const [groupStageFinished, setGroupStageFinished] = useState(false)
+  const [thirdPlaceTeams, setThirdPlaceTeams] = useState<ThirdPlaceTeam[]>([])
+  const [bestThirdChecks, setBestThirdChecks] = useState<Record<string, boolean>>({})
+  const [loadingThirds, setLoadingThirds] = useState(true)
+  const [confirmingThirds, setConfirmingThirds] = useState(false)
 
   async function load(g: string) {
     setLoading(true)
@@ -688,17 +705,33 @@ function TabTabelaGrupos() {
     const { data: standingsData } = ids.length
       ? await supabase
           .from('group_standings')
-          .select('team_id, played, won, drawn, lost, goals_for, goals_against')
+          .select('team_id, played, won, drawn, lost, goals_for, goals_against, position')
           .in('team_id', ids)
       : { data: [] }
 
     const standingsMap = new Map((standingsData ?? []).map((s: { team_id: string }) => [s.team_id, s]))
 
-    setTeams((teamsData ?? []).map((t: { id: string; name: string; flag_url: string | null }) => ({
-      team_id: t.id,
-      name: t.name,
-      flag_url: t.flag_url,
-    })))
+    const rawTeams: StandingTeam[] = (teamsData ?? []).map((t: { id: string; name: string; flag_url: string | null }) => {
+      const s = standingsMap.get(t.id) as { position?: number } | undefined
+      return {
+        team_id: t.id,
+        name: t.name,
+        flag_url: t.flag_url,
+        position: s?.position ?? 0,
+      }
+    })
+
+    const positions = rawTeams.map(t => t.position)
+    const validPositions =
+      rawTeams.length > 0 &&
+      positions.every(p => p >= 1 && p <= rawTeams.length) &&
+      new Set(positions).size === rawTeams.length
+
+    setTeams(
+      validPositions
+        ? [...rawTeams].sort((a, b) => a.position - b.position)
+        : rawTeams.map((t, idx) => ({ ...t, position: idx + 1 }))
+    )
 
     const f: Record<string, StandingForm> = {}
     for (const t of teamsData ?? []) {
@@ -723,6 +756,108 @@ function TabTabelaGrupos() {
   useEffect(() => {
     load(grupo)
   }, [grupo])
+
+  const loadThirdPlaces = useCallback(async () => {
+    setLoadingThirds(true)
+    const supabase = createClient()
+    const { data: groupMatches } = await supabase.from('matches').select('is_finished').eq('phase', 'groups')
+    const finished = (groupMatches ?? []).length > 0 && (groupMatches ?? []).every((m: { is_finished: boolean }) => m.is_finished)
+    setGroupStageFinished(finished)
+
+    if (!finished) {
+      setThirdPlaceTeams([])
+      setLoadingThirds(false)
+      return
+    }
+
+    const { data } = await supabase
+      .from('group_standings')
+      .select('team_id, group_name, points, goal_difference, goals_for, is_best_third, team:teams(name, flag_url)')
+      .eq('position', 3)
+
+    const list: ThirdPlaceTeam[] = (data ?? [])
+      .map((s: { team_id: string; group_name: string; points: number; goal_difference: number; goals_for: number; is_best_third: boolean; team: unknown }) => {
+        const team = singleOrFirst<{ name: string; flag_url: string | null }>(
+          s.team as { name: string; flag_url: string | null } | { name: string; flag_url: string | null }[]
+        )
+        return {
+          team_id: s.team_id,
+          name: team?.name ?? '?',
+          flag_url: team?.flag_url ?? null,
+          group_name: s.group_name,
+          points: s.points,
+          goal_difference: s.goal_difference,
+          goals_for: s.goals_for,
+          is_best_third: s.is_best_third,
+        }
+      })
+      .sort((a, b) =>
+        b.points - a.points ||
+        b.goal_difference - a.goal_difference ||
+        b.goals_for - a.goals_for
+      )
+
+    setThirdPlaceTeams(list)
+    setBestThirdChecks(Object.fromEntries(list.map(t => [t.team_id, t.is_best_third])))
+    setLoadingThirds(false)
+  }, [])
+
+  useEffect(() => {
+    loadThirdPlaces()
+  }, [loadThirdPlaces])
+
+  async function moverPosicao(index: number, direction: -1 | 1) {
+    const target = index + direction
+    if (target < 0 || target >= teams.length) return
+
+    const reordered = [...teams]
+    const tmp = reordered[index]
+    reordered[index] = reordered[target]
+    reordered[target] = tmp
+    const withPositions = reordered.map((t, i) => ({ ...t, position: i + 1 }))
+
+    const previous = teams
+    setTeams(withPositions)
+
+    const supabase = createClient()
+    const results = await Promise.all(
+      withPositions.map(t => supabase.from('group_standings').update({ position: t.position }).eq('team_id', t.team_id))
+    )
+    const error = results.find(r => r.error)?.error
+    if (error) {
+      toast.error('Erro ao reordenar')
+      setTeams(previous)
+    }
+  }
+
+  function toggleBestThird(teamId: string) {
+    setBestThirdChecks(c => ({ ...c, [teamId]: !c[teamId] }))
+  }
+
+  async function confirmarClassificados() {
+    const checkedCount = thirdPlaceTeams.filter(t => bestThirdChecks[t.team_id]).length
+    if (checkedCount !== 8) {
+      toast.error('Selecione exatamente 8 times')
+      return
+    }
+    setConfirmingThirds(true)
+    try {
+      const supabase = createClient()
+      const results = await Promise.all(
+        thirdPlaceTeams.map(t =>
+          supabase.from('group_standings').update({ is_best_third: !!bestThirdChecks[t.team_id] }).eq('team_id', t.team_id)
+        )
+      )
+      const error = results.find(r => r.error)?.error
+      if (error) throw error
+      toast.success('Classificados confirmados!')
+      setThirdPlaceTeams(ts => ts.map(t => ({ ...t, is_best_third: !!bestThirdChecks[t.team_id] })))
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'Erro ao confirmar classificados')
+    } finally {
+      setConfirmingThirds(false)
+    }
+  }
 
   function setField(teamId: string, field: keyof StandingForm, value: string) {
     setForm(f => ({ ...f, [teamId]: { ...(f[teamId] ?? EMPTY_STANDING_FORM), [field]: value } }))
@@ -803,6 +938,8 @@ function TabTabelaGrupos() {
     try {
       const data = await postJson('/api/admin/calcular-pontos-grupos')
       toast.success(`Pontos calculados! ${data.updated_bets} palpite(s) de grupo atualizados.`)
+      await load(grupo)
+      await loadThirdPlaces()
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : 'Erro ao calcular pontos')
     } finally {
@@ -836,6 +973,7 @@ function TabTabelaGrupos() {
           <table className="w-full text-sm">
             <thead className="bg-zinc-900">
               <tr className="text-left text-xs font-semibold uppercase tracking-wide text-zinc-500">
+                <th className="px-1 py-2 text-center">#</th>
                 <th className="px-3 py-2">Time</th>
                 {STANDING_FIELDS.map(f => (
                   <th key={f.key} className="px-1 py-2 text-center">{f.label}</th>
@@ -845,11 +983,34 @@ function TabTabelaGrupos() {
               </tr>
             </thead>
             <tbody className="divide-y divide-zinc-800 bg-zinc-900/40">
-              {teams.map(t => {
+              {teams.map((t, idx) => {
                 const f = form[t.team_id] ?? EMPTY_STANDING_FORM
                 const { sg, pts } = calc(t.team_id)
                 return (
                   <tr key={t.team_id}>
+                    <td className="px-1 py-2">
+                      <div className="flex items-center justify-center gap-1">
+                        <span className="w-3 text-center text-xs font-bold tabular-nums text-zinc-400">{idx + 1}</span>
+                        <div className="flex flex-col">
+                          <button
+                            type="button"
+                            onClick={() => moverPosicao(idx, -1)}
+                            disabled={idx === 0}
+                            className="text-zinc-500 hover:text-zinc-200 disabled:opacity-20 disabled:cursor-not-allowed"
+                          >
+                            <ChevronUp className="size-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => moverPosicao(idx, 1)}
+                            disabled={idx === teams.length - 1}
+                            className="text-zinc-500 hover:text-zinc-200 disabled:opacity-20 disabled:cursor-not-allowed"
+                          >
+                            <ChevronDown className="size-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    </td>
                     <td className="px-3 py-2">
                       <div className="flex items-center gap-2 min-w-[140px]">
                         {t.flag_url ? (
@@ -879,7 +1040,7 @@ function TabTabelaGrupos() {
               })}
               {teams.length === 0 && (
                 <tr>
-                  <td colSpan={9} className="px-3 py-6 text-center text-zinc-500">
+                  <td colSpan={10} className="px-3 py-6 text-center text-zinc-500">
                     Nenhum time encontrado neste grupo
                   </td>
                 </tr>
@@ -905,6 +1066,63 @@ function TabTabelaGrupos() {
       >
         {calculating ? <Loader2 className="size-4 animate-spin" /> : 'Calcular pontos dos grupos'}
       </Button>
+
+      {!loadingThirds && groupStageFinished && (
+        <div className="space-y-3 rounded-xl border border-zinc-800 bg-zinc-900/40 p-4">
+          <div>
+            <h3 className="font-bold text-zinc-50">8 Melhores Terceiros</h3>
+            <p className="mt-1 text-xs text-zinc-500">
+              Ordenados automaticamente por pontos → saldo de gols → gols pró. Em caso de
+              empate total, marque manualmente quem se classifica.
+            </p>
+          </div>
+
+          {thirdPlaceTeams.length === 0 ? (
+            <p className="text-sm text-zinc-500">
+              Calcule os pontos dos grupos para identificar os times em 3º lugar.
+            </p>
+          ) : (
+            <>
+              <div className="space-y-1.5">
+                {thirdPlaceTeams.map(t => (
+                  <label
+                    key={t.team_id}
+                    className="flex items-center gap-2 rounded-lg border border-zinc-700 bg-zinc-800/50 px-3 py-2 cursor-pointer"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={!!bestThirdChecks[t.team_id]}
+                      onChange={() => toggleBestThird(t.team_id)}
+                      className="size-4 accent-emerald-500"
+                    />
+                    {t.flag_url ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={t.flag_url} alt="" className="size-5 rounded-full object-cover shrink-0" />
+                    ) : (
+                      <span className="text-base">🏳️</span>
+                    )}
+                    <span className="font-medium text-zinc-100 truncate">{t.name}</span>
+                    <span className="text-xs text-zinc-500">Grupo {t.group_name}</span>
+                    <span className="ml-auto whitespace-nowrap text-xs tabular-nums text-zinc-400">
+                      {t.points} pts · SG {t.goal_difference} · {t.goals_for} GF
+                    </span>
+                  </label>
+                ))}
+              </div>
+
+              <Button
+                onClick={confirmarClassificados}
+                disabled={confirmingThirds}
+                className="w-full bg-emerald-500 hover:bg-emerald-600 text-white"
+              >
+                {confirmingThirds
+                  ? <Loader2 className="size-4 animate-spin" />
+                  : `Confirmar classificados (${Object.values(bestThirdChecks).filter(Boolean).length}/8)`}
+              </Button>
+            </>
+          )}
+        </div>
+      )}
     </div>
   )
 }

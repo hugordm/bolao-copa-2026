@@ -103,6 +103,7 @@ export type GroupStanding = {
   goals_against: number
   goal_difference: number
   points: number
+  is_best_third: boolean
   updated_at: string
   team?: Team
 }

@@ -84,6 +84,7 @@ type StandingRow = {
   goals_for: number
   goal_difference: number
   points: number
+  is_best_third: boolean
 }
 
 /** Sorts standings by points, then goal difference, then goals for (best first). */
@@ -92,6 +93,37 @@ function compararStandings(a: StandingRow, b: StandingRow): number {
     b.points - a.points ||
     b.goal_difference - a.goal_difference ||
     b.goals_for - a.goals_for
+  )
+}
+
+export type ThirdPlaceCandidate = {
+  team_id: string
+  goals_for: number
+  goal_difference: number
+  points: number
+  is_best_third: boolean
+}
+
+/**
+ * Picks the 8 third-placed teams that advance to the round of 32.
+ * Honors manual `is_best_third` overrides set by the admin (used to break total
+ * ties); falls back to automatic ranking by points -> goal difference -> goals for
+ * when none (or not exactly 8) are marked.
+ */
+export function selecionarMelhoresTerceiros(thirdPlaced: ThirdPlaceCandidate[]): Set<string> {
+  const manual = thirdPlaced.filter(t => t.is_best_third)
+  if (manual.length === 8) {
+    return new Set(manual.map(t => t.team_id))
+  }
+  return new Set(
+    [...thirdPlaced]
+      .sort((a, b) =>
+        b.points - a.points ||
+        b.goal_difference - a.goal_difference ||
+        b.goals_for - a.goals_for
+      )
+      .slice(0, 8)
+      .map(t => t.team_id)
   )
 }
 
@@ -114,7 +146,7 @@ export async function calcularPontosGrupos(
 ): Promise<{ updatedStandings: number; updatedBets: number }> {
   const { data: standings, error: standingsError } = await supabase
     .from('group_standings')
-    .select('team_id, group_name, goals_for, goal_difference, points')
+    .select('team_id, group_name, goals_for, goal_difference, points, is_best_third')
 
   if (standingsError || !standings || standings.length === 0) {
     return { updatedStandings: 0, updatedBets: 0 }
@@ -147,10 +179,8 @@ export async function calcularPontosGrupos(
     })
   )
 
-  const thirdPlaced = (standings as StandingRow[])
-    .filter(s => positionByTeam.get(s.team_id) === 3)
-    .sort(compararStandings)
-  const bestThirds = new Set(thirdPlaced.slice(0, 8).map(s => s.team_id))
+  const thirdPlaced = (standings as StandingRow[]).filter(s => positionByTeam.get(s.team_id) === 3)
+  const bestThirds = selecionarMelhoresTerceiros(thirdPlaced)
 
   const { data: config, error: configError } = await supabase
     .from('score_config')
