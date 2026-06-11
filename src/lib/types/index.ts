@@ -90,6 +90,23 @@ export type ScoreConfig = {
   last_sync: string | null
 }
 
+export type GroupStanding = {
+  id: string
+  team_id: string
+  group_name: string
+  position: number
+  played: number
+  won: number
+  drawn: number
+  lost: number
+  goals_for: number
+  goals_against: number
+  goal_difference: number
+  points: number
+  updated_at: string
+  team?: Team
+}
+
 export type RankingUser = {
   id: string
   name: string

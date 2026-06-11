@@ -1,0 +1,175 @@
+'use client'
+
+import { useCallback, useEffect, useState } from 'react'
+import { motion } from 'framer-motion'
+import { createClient } from '@/lib/supabase/client'
+
+type Time = { name: string; flag_url: string | null }
+
+type StandingRow = {
+  team_id: string
+  team: Time
+  played: number
+  won: number
+  drawn: number
+  lost: number
+  goals_for: number
+  goal_difference: number
+  points: number
+}
+
+type Grupo = {
+  name: string
+  teams: StandingRow[]
+}
+
+function Flag({ url, alt }: { url: string | null | undefined; alt: string }) {
+  if (!url) return <span className="text-base">🏳️</span>
+  // eslint-disable-next-line @next/next/no-img-element
+  return <img src={url} alt={alt} className="size-5 rounded-full object-cover shrink-0" />
+}
+
+export default function GruposTabelaPage() {
+  const [grupos, setGrupos] = useState<Grupo[]>([])
+  const [loading, setLoading] = useState(true)
+
+  const fetchStandings = useCallback(async () => {
+    const supabase = createClient()
+    const [{ data: teamsData }, { data: standingsData }] = await Promise.all([
+      supabase
+        .from('teams')
+        .select('id, name, flag_url, group_name')
+        .not('group_name', 'is', null)
+        .order('group_name', { ascending: true })
+        .order('name', { ascending: true }),
+      supabase
+        .from('group_standings')
+        .select('team_id, played, won, drawn, lost, goals_for, goal_difference, points'),
+    ])
+
+    type StandingData = {
+      team_id: string
+      played: number
+      won: number
+      drawn: number
+      lost: number
+      goals_for: number
+      goal_difference: number
+      points: number
+    }
+    const standingsMap = new Map<string, StandingData>(
+      (standingsData ?? []).map((s: StandingData) => [s.team_id, s])
+    )
+
+    const groupMap = new Map<string, StandingRow[]>()
+    for (const t of teamsData ?? []) {
+      if (!t.group_name) continue
+      const s = standingsMap.get(t.id)
+      const row: StandingRow = {
+        team_id: t.id,
+        team: { name: t.name, flag_url: t.flag_url },
+        played: s?.played ?? 0,
+        won: s?.won ?? 0,
+        drawn: s?.drawn ?? 0,
+        lost: s?.lost ?? 0,
+        goals_for: s?.goals_for ?? 0,
+        goal_difference: s?.goal_difference ?? 0,
+        points: s?.points ?? 0,
+      }
+      const list = groupMap.get(t.group_name) ?? []
+      list.push(row)
+      groupMap.set(t.group_name, list)
+    }
+
+    const gruposList: Grupo[] = Array.from(groupMap.entries())
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([name, teams]) => ({
+        name,
+        teams: [...teams].sort(
+          (a, b) =>
+            b.points - a.points ||
+            b.goal_difference - a.goal_difference ||
+            b.goals_for - a.goals_for
+        ),
+      }))
+
+    setGrupos(gruposList)
+    setLoading(false)
+  }, [])
+
+  useEffect(() => {
+    fetchStandings()
+
+    const supabase = createClient()
+    const channel = supabase
+      .channel('grupos-tabela-realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'group_standings' }, fetchStandings)
+      .subscribe()
+
+    return () => { supabase.removeChannel(channel) }
+  }, [fetchStandings])
+
+  return (
+    <div className="max-w-5xl mx-auto px-4 py-6">
+      <h1 className="text-xl font-bold text-zinc-50 mb-1">📊 Tabela dos Grupos</h1>
+      <p className="mb-4 text-sm text-zinc-500">Classificação dos grupos da Copa</p>
+
+      {loading ? (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {Array.from({ length: 12 }).map((_, i) => (
+            <div key={i} className="h-56 rounded-xl bg-zinc-800 animate-pulse" />
+          ))}
+        </div>
+      ) : grupos.length === 0 ? (
+        <p className="text-center text-zinc-500 py-12">Nenhum grupo encontrado</p>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {grupos.map(g => (
+            <div key={g.name} className="overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900">
+              <div className="border-b border-zinc-800 px-4 py-3">
+                <h3 className="font-bold text-zinc-50">Grupo {g.name}</h3>
+              </div>
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
+                    <th className="px-3 py-2">Time</th>
+                    <th className="px-1.5 py-2 text-center">J</th>
+                    <th className="px-1.5 py-2 text-center">V</th>
+                    <th className="px-1.5 py-2 text-center">E</th>
+                    <th className="px-1.5 py-2 text-center">D</th>
+                    <th className="px-1.5 py-2 text-center">SG</th>
+                    <th className="px-1.5 py-2 text-center">PTS</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-zinc-800">
+                  {g.teams.map((t, idx) => (
+                    <motion.tr
+                      key={t.team_id}
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      transition={{ duration: 0.2 }}
+                      className={idx < 2 ? 'bg-emerald-500/5' : ''}
+                    >
+                      <td className="px-3 py-2">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <Flag url={t.team.flag_url} alt="" />
+                          <span className="truncate font-medium text-zinc-100">{t.team.name}</span>
+                        </div>
+                      </td>
+                      <td className="px-1.5 py-2 text-center tabular-nums text-zinc-300">{t.played}</td>
+                      <td className="px-1.5 py-2 text-center tabular-nums text-zinc-300">{t.won}</td>
+                      <td className="px-1.5 py-2 text-center tabular-nums text-zinc-300">{t.drawn}</td>
+                      <td className="px-1.5 py-2 text-center tabular-nums text-zinc-300">{t.lost}</td>
+                      <td className="px-1.5 py-2 text-center tabular-nums text-zinc-300">{t.goal_difference}</td>
+                      <td className="px-1.5 py-2 text-center font-bold tabular-nums text-zinc-50">{t.points}</td>
+                    </motion.tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}

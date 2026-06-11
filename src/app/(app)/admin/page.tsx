@@ -631,6 +631,262 @@ function TabGruposElim() {
   )
 }
 
+const GRUPOS_LETRAS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L']
+
+type StandingTeam = {
+  team_id: string
+  name: string
+  flag_url: string | null
+}
+
+type StandingForm = {
+  played: string
+  won: string
+  drawn: string
+  lost: string
+  goals_for: string
+  goals_against: string
+}
+
+const EMPTY_STANDING_FORM: StandingForm = {
+  played: '0',
+  won: '0',
+  drawn: '0',
+  lost: '0',
+  goals_for: '0',
+  goals_against: '0',
+}
+
+const STANDING_FIELDS: { key: keyof StandingForm; label: string }[] = [
+  { key: 'played', label: 'J' },
+  { key: 'won', label: 'V' },
+  { key: 'drawn', label: 'E' },
+  { key: 'lost', label: 'D' },
+  { key: 'goals_for', label: 'GF' },
+  { key: 'goals_against', label: 'GC' },
+]
+
+function TabTabelaGrupos() {
+  const [grupo, setGrupo] = useState('A')
+  const [teams, setTeams] = useState<StandingTeam[]>([])
+  const [form, setForm] = useState<Record<string, StandingForm>>({})
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [populating, setPopulating] = useState(false)
+
+  async function load(g: string) {
+    setLoading(true)
+    const supabase = createClient()
+    const { data: teamsData } = await supabase
+      .from('teams')
+      .select('id, name, flag_url')
+      .eq('group_name', g)
+      .order('name')
+
+    const ids = (teamsData ?? []).map((t: { id: string }) => t.id)
+    const { data: standingsData } = ids.length
+      ? await supabase
+          .from('group_standings')
+          .select('team_id, played, won, drawn, lost, goals_for, goals_against')
+          .in('team_id', ids)
+      : { data: [] }
+
+    const standingsMap = new Map((standingsData ?? []).map((s: { team_id: string }) => [s.team_id, s]))
+
+    setTeams((teamsData ?? []).map((t: { id: string; name: string; flag_url: string | null }) => ({
+      team_id: t.id,
+      name: t.name,
+      flag_url: t.flag_url,
+    })))
+
+    const f: Record<string, StandingForm> = {}
+    for (const t of teamsData ?? []) {
+      const s = standingsMap.get(t.id) as
+        | { played: number; won: number; drawn: number; lost: number; goals_for: number; goals_against: number }
+        | undefined
+      f[t.id] = s
+        ? {
+            played: String(s.played ?? 0),
+            won: String(s.won ?? 0),
+            drawn: String(s.drawn ?? 0),
+            lost: String(s.lost ?? 0),
+            goals_for: String(s.goals_for ?? 0),
+            goals_against: String(s.goals_against ?? 0),
+          }
+        : { ...EMPTY_STANDING_FORM }
+    }
+    setForm(f)
+    setLoading(false)
+  }
+
+  useEffect(() => {
+    load(grupo)
+  }, [grupo])
+
+  function setField(teamId: string, field: keyof StandingForm, value: string) {
+    setForm(f => ({ ...f, [teamId]: { ...(f[teamId] ?? EMPTY_STANDING_FORM), [field]: value } }))
+  }
+
+  function calc(teamId: string) {
+    const f = form[teamId] ?? EMPTY_STANDING_FORM
+    const gf = parseInt(f.goals_for) || 0
+    const gc = parseInt(f.goals_against) || 0
+    const v = parseInt(f.won) || 0
+    const e = parseInt(f.drawn) || 0
+    return { sg: gf - gc, pts: v * 3 + e }
+  }
+
+  async function salvarGrupo() {
+    setSaving(true)
+    try {
+      const supabase = createClient()
+      const rows = teams.map(t => {
+        const f = form[t.team_id] ?? EMPTY_STANDING_FORM
+        return {
+          team_id: t.team_id,
+          group_name: grupo,
+          played: parseInt(f.played) || 0,
+          won: parseInt(f.won) || 0,
+          drawn: parseInt(f.drawn) || 0,
+          lost: parseInt(f.lost) || 0,
+          goals_for: parseInt(f.goals_for) || 0,
+          goals_against: parseInt(f.goals_against) || 0,
+          updated_at: new Date().toISOString(),
+        }
+      })
+      const { error } = await supabase.from('group_standings').upsert(rows, { onConflict: 'team_id' })
+      if (error) throw error
+      toast.success(`Grupo ${grupo} salvo!`)
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'Erro ao salvar')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function popularStandings() {
+    setPopulating(true)
+    try {
+      const supabase = createClient()
+      const { data: allTeams, error: teamsError } = await supabase
+        .from('teams')
+        .select('id, group_name')
+        .not('group_name', 'is', null)
+      if (teamsError) throw teamsError
+
+      const rows = (allTeams ?? []).map((t: { id: string; group_name: string }) => ({
+        team_id: t.id,
+        group_name: t.group_name,
+        played: 0,
+        won: 0,
+        drawn: 0,
+        lost: 0,
+        goals_for: 0,
+        goals_against: 0,
+      }))
+      const { error } = await supabase
+        .from('group_standings')
+        .upsert(rows, { onConflict: 'team_id', ignoreDuplicates: true })
+      if (error) throw error
+      toast.success(`${rows.length} time(s) populados!`)
+      await load(grupo)
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'Erro ao popular')
+    } finally {
+      setPopulating(false)
+    }
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <select value={grupo} onChange={e => setGrupo(e.target.value)} className={SELECT_CLASS}>
+          {GRUPOS_LETRAS.map(g => (
+            <option key={g} value={g}>Grupo {g}</option>
+          ))}
+        </select>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={popularStandings}
+          disabled={populating}
+          className="border-zinc-700 text-zinc-300 hover:bg-zinc-800"
+        >
+          {populating ? <Loader2 className="size-3 animate-spin" /> : 'Popular standings'}
+        </Button>
+      </div>
+
+      {loading ? (
+        <div className="h-64 rounded-xl bg-zinc-800 animate-pulse" />
+      ) : (
+        <div className="overflow-x-auto rounded-xl border border-zinc-800">
+          <table className="w-full text-sm">
+            <thead className="bg-zinc-900">
+              <tr className="text-left text-xs font-semibold uppercase tracking-wide text-zinc-500">
+                <th className="px-3 py-2">Time</th>
+                {STANDING_FIELDS.map(f => (
+                  <th key={f.key} className="px-1 py-2 text-center">{f.label}</th>
+                ))}
+                <th className="px-2 py-2 text-center">SG</th>
+                <th className="px-2 py-2 text-center">PTS</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-zinc-800 bg-zinc-900/40">
+              {teams.map(t => {
+                const f = form[t.team_id] ?? EMPTY_STANDING_FORM
+                const { sg, pts } = calc(t.team_id)
+                return (
+                  <tr key={t.team_id}>
+                    <td className="px-3 py-2">
+                      <div className="flex items-center gap-2 min-w-[140px]">
+                        {t.flag_url ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={t.flag_url} alt="" className="size-5 rounded-full object-cover shrink-0" />
+                        ) : (
+                          <span className="text-base">🏳️</span>
+                        )}
+                        <span className="font-medium text-zinc-100 truncate">{t.name}</span>
+                      </div>
+                    </td>
+                    {STANDING_FIELDS.map(field => (
+                      <td key={field.key} className="px-1 py-2">
+                        <Input
+                          type="number"
+                          min={0}
+                          value={f[field.key]}
+                          onChange={e => setField(t.team_id, field.key, e.target.value)}
+                          className="w-12 text-center bg-zinc-800 border-zinc-700 text-zinc-50 h-8 px-1"
+                        />
+                      </td>
+                    ))}
+                    <td className="px-2 py-2 text-center font-semibold text-zinc-300 tabular-nums">{sg}</td>
+                    <td className="px-2 py-2 text-center font-bold text-zinc-50 tabular-nums">{pts}</td>
+                  </tr>
+                )
+              })}
+              {teams.length === 0 && (
+                <tr>
+                  <td colSpan={9} className="px-3 py-6 text-center text-zinc-500">
+                    Nenhum time encontrado neste grupo
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      <Button
+        onClick={salvarGrupo}
+        disabled={saving || loading || teams.length === 0}
+        className="w-full bg-emerald-500 hover:bg-emerald-600 text-white"
+      >
+        {saving ? <Loader2 className="size-4 animate-spin" /> : `Salvar grupo ${grupo}`}
+      </Button>
+    </div>
+  )
+}
+
 type ScoreConfigForm = Omit<ScoreConfig, 'id' | 'last_sync'>
 
 const SCORE_CONFIG_DEFAULTS: ScoreConfigForm = {
@@ -949,6 +1205,7 @@ export default function AdminPage() {
             ['resultados', 'Resultados'],
             ['artilharia', 'Artilharia'],
             ['grupos', 'Grupos e Eliminação'],
+            ['tabela-grupos', 'Tabela dos Grupos'],
             ['pontuacao', 'Configuração de Pontuação'],
             ['usuarios', 'Usuários'],
             ['seed', 'Popular Dados'],
@@ -966,6 +1223,7 @@ export default function AdminPage() {
         <TabsContent value="resultados"><TabResultados /></TabsContent>
         <TabsContent value="artilharia"><TabArtilharia /></TabsContent>
         <TabsContent value="grupos"><TabGruposElim /></TabsContent>
+        <TabsContent value="tabela-grupos"><TabTabelaGrupos /></TabsContent>
         <TabsContent value="pontuacao"><TabPontuacao /></TabsContent>
         <TabsContent value="usuarios"><TabUsuarios /></TabsContent>
         <TabsContent value="seed"><TabSeed /></TabsContent>
