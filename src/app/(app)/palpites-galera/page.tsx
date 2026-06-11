@@ -44,7 +44,7 @@ type PlayerRef = {
   teams: TeamRef | TeamRef[] | null
 }
 
-type SpecialBetType = 'top_scorer' | 'team_scorer'
+type SpecialBetType = 'champion' | 'top_scorer' | 'team_scorer'
 
 type SpecialBetRow = {
   user_id: string
@@ -64,8 +64,13 @@ type ArtilheiroBet = {
   team: TeamRef | null
 }
 
+type ChampionBet = {
+  user_id: string
+  team: TeamRef
+}
+
 type AbaTempo = 'hoje' | 'amanha' | 'todos'
-type Aba = AbaTempo | 'artilheiros'
+type Aba = AbaTempo | 'artilheiros' | 'campeao'
 
 const AVATAR_COLORS = [
   'bg-emerald-600', 'bg-blue-600', 'bg-violet-600', 'bg-orange-600',
@@ -331,6 +336,45 @@ function CardArtilheiroSelecao({
 }
 
 // ---------------------------------------------------------------------------
+// Card de Campeão
+// ---------------------------------------------------------------------------
+
+function CardCampeao({
+  championByUser,
+  participantes,
+  userId,
+}: {
+  championByUser: Map<string, TeamRef>
+  participantes: Participante[]
+  userId: string | null
+}) {
+  return (
+    <div className="rounded-xl border border-zinc-800 bg-zinc-900 overflow-hidden">
+      <div className="border-b border-zinc-800 bg-zinc-800/40 px-4 py-3">
+        <h3 className="font-bold text-zinc-50">🏆 Quem vai ser Campeão?</h3>
+      </div>
+      <div className="divide-y divide-zinc-800/70">
+        {participantes.map(p => {
+          const team = championByUser.get(p.id)
+          return (
+            <ParticipanteRow key={p.id} participante={p} userId={userId}>
+              {team ? (
+                <div className="flex shrink-0 items-center gap-2">
+                  <Flag url={team.flag_url} alt="" />
+                  <span className="text-sm font-semibold text-zinc-100">{team.name}</span>
+                </div>
+              ) : (
+                <span className="shrink-0 text-sm text-zinc-600">— Não palpitou</span>
+              )}
+            </ParticipanteRow>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
 // Página principal
 // ---------------------------------------------------------------------------
 
@@ -339,6 +383,7 @@ export default function PalpitesGaleraPage() {
   const [bets, setBets] = useState<Bet[]>([])
   const [participantes, setParticipantes] = useState<Participante[]>([])
   const [artilheiroBets, setArtilheiroBets] = useState<ArtilheiroBet[]>([])
+  const [championBets, setChampionBets] = useState<ChampionBet[]>([])
   const [userId, setUserId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [aba, setAba] = useState<Aba>('hoje')
@@ -374,7 +419,7 @@ export default function PalpitesGaleraPage() {
           .select(
             'user_id, bet_type, team_id, player_id, team:teams(name, flag_url), player:players(name, team_id, teams(name, flag_url))'
           )
-          .in('bet_type', ['top_scorer', 'team_scorer']),
+          .in('bet_type', ['champion', 'top_scorer', 'team_scorer']),
       ])
 
       if (matchesData) {
@@ -411,6 +456,14 @@ export default function PalpitesGaleraPage() {
             })
             .filter((b): b is ArtilheiroBet => !!b)
         )
+        setChampionBets(
+          (specialBetsData as SpecialBetRow[])
+            .filter((b): b is SpecialBetRow & { team_id: string } => b.bet_type === 'champion' && !!b.team_id)
+            .map((b): ChampionBet => ({
+              user_id: b.user_id,
+              team: singleOrFirst<TeamRef>(b.team) ?? { name: '?', flag_url: null },
+            }))
+        )
       }
       setLoading(false)
     }
@@ -435,6 +488,12 @@ export default function PalpitesGaleraPage() {
     for (const p of participantes) map.set(p.id, p)
     return map
   }, [participantes])
+
+  const championByUser = useMemo(() => {
+    const map = new Map<string, TeamRef>()
+    for (const bet of championBets) map.set(bet.user_id, bet.team)
+    return map
+  }, [championBets])
 
   const topScorerByUser = useMemo(() => {
     const map = new Map<string, ArtilheiroBet>()
@@ -487,18 +546,21 @@ export default function PalpitesGaleraPage() {
         <p className="text-center text-zinc-500 py-12">Faça login para ver os palpites da galera</p>
       ) : (
         <Tabs value={aba} onValueChange={v => setAba(v as Aba)}>
-          <TabsList className="w-full bg-zinc-900 border border-zinc-800 mb-6">
-            <TabsTrigger value="hoje" className="flex-1 data-active:bg-emerald-500 data-active:text-white">
+          <TabsList className="w-full bg-zinc-900 border border-zinc-800 mb-6 overflow-x-auto justify-start">
+            <TabsTrigger value="hoje" className="flex-1 text-xs sm:text-sm data-active:bg-emerald-500 data-active:text-white">
               Hoje
             </TabsTrigger>
-            <TabsTrigger value="amanha" className="flex-1 data-active:bg-emerald-500 data-active:text-white">
+            <TabsTrigger value="amanha" className="flex-1 text-xs sm:text-sm data-active:bg-emerald-500 data-active:text-white">
               Amanhã
             </TabsTrigger>
-            <TabsTrigger value="todos" className="flex-1 data-active:bg-emerald-500 data-active:text-white">
+            <TabsTrigger value="todos" className="flex-1 text-xs sm:text-sm data-active:bg-emerald-500 data-active:text-white">
               Todos
             </TabsTrigger>
-            <TabsTrigger value="artilheiros" className="flex-1 data-active:bg-emerald-500 data-active:text-white">
+            <TabsTrigger value="artilheiros" className="flex-1 text-xs sm:text-sm data-active:bg-emerald-500 data-active:text-white">
               Artilheiros
+            </TabsTrigger>
+            <TabsTrigger value="campeao" className="flex-1 text-xs sm:text-sm data-active:bg-emerald-500 data-active:text-white">
+              Campeão
             </TabsTrigger>
           </TabsList>
 
@@ -536,6 +598,10 @@ export default function PalpitesGaleraPage() {
                 />
               ))}
             </div>
+          </TabsContent>
+
+          <TabsContent value="campeao">
+            <CardCampeao championByUser={championByUser} participantes={participantes} userId={userId} />
           </TabsContent>
         </Tabs>
       )}
