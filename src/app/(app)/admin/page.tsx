@@ -341,6 +341,12 @@ function TabArtilharia() {
         goals_in_tournament: p.goals_in_tournament ?? 0,
         is_active: p.is_active ?? true,
       }))
+      mapped.sort((a, b) => {
+        if (a.goals_in_tournament === 0 && b.goals_in_tournament === 0) return a.name.localeCompare(b.name)
+        if (a.goals_in_tournament === 0) return 1
+        if (b.goals_in_tournament === 0) return -1
+        return b.goals_in_tournament - a.goals_in_tournament
+      })
       setPlayers(mapped)
       const g: Record<string, string> = {}
       for (const p of mapped) g[p.id] = String(p.goals_in_tournament)
