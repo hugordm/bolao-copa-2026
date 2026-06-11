@@ -36,7 +36,36 @@ type Participante = {
   avatar_url: string | null
 }
 
+type TeamRef = { name: string; flag_url: string | null }
+
+type PlayerRef = {
+  name: string
+  team_id: string
+  teams: TeamRef | TeamRef[] | null
+}
+
+type SpecialBetType = 'top_scorer' | 'team_scorer'
+
+type SpecialBetRow = {
+  user_id: string
+  bet_type: SpecialBetType
+  team_id: string | null
+  player_id: string | null
+  team: TeamRef | TeamRef[] | null
+  player: PlayerRef | PlayerRef[] | null
+}
+
+type ArtilheiroBet = {
+  user_id: string
+  bet_type: SpecialBetType
+  player_name: string
+  player_team: TeamRef
+  team_id: string | null
+  team: TeamRef | null
+}
+
 type AbaTempo = 'hoje' | 'amanha' | 'todos'
+type Aba = AbaTempo | 'artilheiros'
 
 const AVATAR_COLORS = [
   'bg-emerald-600', 'bg-blue-600', 'bg-violet-600', 'bg-orange-600',
@@ -200,6 +229,108 @@ function MatchCard({
 }
 
 // ---------------------------------------------------------------------------
+// Cards de Artilheiros
+// ---------------------------------------------------------------------------
+
+function ParticipanteRow({
+  participante,
+  userId,
+  children,
+}: {
+  participante: Participante
+  userId: string | null
+  children: React.ReactNode
+}) {
+  const isMe = participante.id === userId
+
+  return (
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 px-4 py-2.5">
+      <div
+        className={`flex size-8 shrink-0 items-center justify-center rounded-full text-xs font-bold text-white ${avatarColor(participante.name)}`}
+      >
+        {participante.name.charAt(0).toUpperCase()}
+      </div>
+      <div className="flex min-w-0 flex-1 items-center gap-2">
+        <span className="truncate text-sm font-medium text-zinc-200">{participante.name}</span>
+        {isMe && (
+          <span className="shrink-0 rounded-full bg-blue-500 px-2 py-0.5 text-[10px] font-bold text-white">
+            VOCÊ
+          </span>
+        )}
+      </div>
+      {children}
+    </div>
+  )
+}
+
+function CardArtilheiroCopa({
+  bets,
+  participantes,
+  userId,
+}: {
+  bets: Map<string, ArtilheiroBet>
+  participantes: Participante[]
+  userId: string | null
+}) {
+  return (
+    <div className="rounded-xl border border-zinc-800 bg-zinc-900 overflow-hidden">
+      <div className="border-b border-zinc-800 bg-zinc-800/40 px-4 py-3">
+        <h3 className="font-bold text-zinc-50">🏆 Artilheiro da Copa</h3>
+      </div>
+      <div className="divide-y divide-zinc-800/70">
+        {participantes.map(p => {
+          const bet = bets.get(p.id)
+          return (
+            <ParticipanteRow key={p.id} participante={p} userId={userId}>
+              {bet ? (
+                <div className="flex shrink-0 items-center gap-2">
+                  <Flag url={bet.player_team.flag_url} alt="" />
+                  <span className="text-sm font-semibold text-zinc-100">{bet.player_name}</span>
+                </div>
+              ) : (
+                <span className="shrink-0 text-sm text-zinc-600">— Não palpitou</span>
+              )}
+            </ParticipanteRow>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+function CardArtilheiroSelecao({
+  team,
+  bets,
+  participantesById,
+  userId,
+}: {
+  team: TeamRef
+  bets: ArtilheiroBet[]
+  participantesById: Map<string, Participante>
+  userId: string | null
+}) {
+  return (
+    <div className="rounded-xl border border-zinc-800 bg-zinc-900 overflow-hidden">
+      <div className="flex items-center gap-2 border-b border-zinc-800 bg-zinc-800/40 px-4 py-3">
+        <Flag url={team.flag_url} alt="" />
+        <h3 className="font-bold text-zinc-50">{team.name}</h3>
+      </div>
+      <div className="divide-y divide-zinc-800/70">
+        {bets.map(bet => {
+          const p = participantesById.get(bet.user_id)
+          if (!p) return null
+          return (
+            <ParticipanteRow key={bet.user_id} participante={p} userId={userId}>
+              <span className="shrink-0 text-sm font-semibold text-zinc-100">{bet.player_name}</span>
+            </ParticipanteRow>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
 // Página principal
 // ---------------------------------------------------------------------------
 
@@ -207,9 +338,10 @@ export default function PalpitesGaleraPage() {
   const [matches, setMatches] = useState<Match[]>([])
   const [bets, setBets] = useState<Bet[]>([])
   const [participantes, setParticipantes] = useState<Participante[]>([])
+  const [artilheiroBets, setArtilheiroBets] = useState<ArtilheiroBet[]>([])
   const [userId, setUserId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
-  const [aba, setAba] = useState<AbaTempo>('hoje')
+  const [aba, setAba] = useState<Aba>('hoje')
 
   useEffect(() => {
     async function load() {
@@ -225,6 +357,7 @@ export default function PalpitesGaleraPage() {
         { data: matchesData },
         { data: betsData },
         { data: usersData },
+        { data: specialBetsData },
       ] = await Promise.all([
         supabase
           .from('matches')
@@ -236,6 +369,12 @@ export default function PalpitesGaleraPage() {
           .from('bets')
           .select('id, user_id, match_id, home_score_bet, away_score_bet, points_earned'),
         supabase.from('users').select('id, name, avatar_url').order('name', { ascending: true }),
+        supabase
+          .from('special_bets')
+          .select(
+            'user_id, bet_type, team_id, player_id, team:teams(name, flag_url), player:players(name, team_id, teams(name, flag_url))'
+          )
+          .in('bet_type', ['top_scorer', 'team_scorer']),
       ])
 
       if (matchesData) {
@@ -255,6 +394,24 @@ export default function PalpitesGaleraPage() {
       }
       if (betsData) setBets(betsData)
       if (usersData) setParticipantes(usersData)
+      if (specialBetsData) {
+        setArtilheiroBets(
+          (specialBetsData as SpecialBetRow[])
+            .map((b): ArtilheiroBet | null => {
+              const player = singleOrFirst<PlayerRef>(b.player)
+              if (!player || !b.player_id) return null
+              return {
+                user_id: b.user_id,
+                bet_type: b.bet_type,
+                player_name: player.name,
+                player_team: singleOrFirst<TeamRef>(player.teams) ?? { name: '?', flag_url: null },
+                team_id: b.team_id,
+                team: singleOrFirst<TeamRef>(b.team) ?? null,
+              }
+            })
+            .filter((b): b is ArtilheiroBet => !!b)
+        )
+      }
       setLoading(false)
     }
     load()
@@ -272,6 +429,34 @@ export default function PalpitesGaleraPage() {
     }
     return map
   }, [bets])
+
+  const participantesById = useMemo(() => {
+    const map = new Map<string, Participante>()
+    for (const p of participantes) map.set(p.id, p)
+    return map
+  }, [participantes])
+
+  const topScorerByUser = useMemo(() => {
+    const map = new Map<string, ArtilheiroBet>()
+    for (const bet of artilheiroBets) {
+      if (bet.bet_type === 'top_scorer') map.set(bet.user_id, bet)
+    }
+    return map
+  }, [artilheiroBets])
+
+  const teamScorerGroups = useMemo(() => {
+    const groups = new Map<string, { team_id: string; team: TeamRef; bets: ArtilheiroBet[] }>()
+    for (const bet of artilheiroBets) {
+      if (bet.bet_type !== 'team_scorer' || !bet.team_id || !bet.team) continue
+      let group = groups.get(bet.team_id)
+      if (!group) {
+        group = { team_id: bet.team_id, team: bet.team, bets: [] }
+        groups.set(bet.team_id, group)
+      }
+      group.bets.push(bet)
+    }
+    return Array.from(groups.values()).sort((a, b) => a.team.name.localeCompare(b.team.name))
+  }, [artilheiroBets])
 
   const agora = new Date()
   const hoje = dataBrasilia(agora.toISOString())
@@ -301,7 +486,7 @@ export default function PalpitesGaleraPage() {
       ) : !userId ? (
         <p className="text-center text-zinc-500 py-12">Faça login para ver os palpites da galera</p>
       ) : (
-        <Tabs value={aba} onValueChange={v => setAba(v as AbaTempo)}>
+        <Tabs value={aba} onValueChange={v => setAba(v as Aba)}>
           <TabsList className="w-full bg-zinc-900 border border-zinc-800 mb-6">
             <TabsTrigger value="hoje" className="flex-1 data-active:bg-emerald-500 data-active:text-white">
               Hoje
@@ -311,6 +496,9 @@ export default function PalpitesGaleraPage() {
             </TabsTrigger>
             <TabsTrigger value="todos" className="flex-1 data-active:bg-emerald-500 data-active:text-white">
               Todos
+            </TabsTrigger>
+            <TabsTrigger value="artilheiros" className="flex-1 data-active:bg-emerald-500 data-active:text-white">
+              Artilheiros
             </TabsTrigger>
           </TabsList>
 
@@ -334,6 +522,21 @@ export default function PalpitesGaleraPage() {
               )}
             </TabsContent>
           ))}
+
+          <TabsContent value="artilheiros">
+            <div className="space-y-4">
+              <CardArtilheiroCopa bets={topScorerByUser} participantes={participantes} userId={userId} />
+              {teamScorerGroups.map(group => (
+                <CardArtilheiroSelecao
+                  key={group.team_id}
+                  team={group.team}
+                  bets={group.bets}
+                  participantesById={participantesById}
+                  userId={userId}
+                />
+              ))}
+            </div>
+          </TabsContent>
         </Tabs>
       )}
     </div>
