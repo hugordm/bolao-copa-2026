@@ -23,6 +23,7 @@ export type Player = {
   name: string
   position: 'GK' | 'DEF' | 'MID' | 'FWD'
   goals_in_tournament: number
+  is_active: boolean
   team?: Team
 }
 

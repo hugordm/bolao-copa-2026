@@ -27,7 +27,7 @@ type SpecialBet = {
   is_locked: boolean
 }
 
-const MAX_EDITS = 3
+const MAX_EDITS = 5
 
 function useBets(userId: string | null) {
   const [bets, setBets] = useState<Record<string, SpecialBet>>({})
@@ -462,6 +462,7 @@ export default function EspeciaisPage() {
             const { data: page } = await supabase
               .from('players')
               .select('id, name, team_id, teams(name, flag_url)')
+              .eq('is_active', true)
               .order('name')
               .range(from, from + PAGE_SIZE - 1)
             if (!page) break

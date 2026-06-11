@@ -10,7 +10,16 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import type { ScoreConfig } from '@/lib/types'
+
+const SELECT_CLASS =
+  'h-9 rounded-lg border border-zinc-700 bg-zinc-800 px-2.5 text-sm text-zinc-50 outline-none focus-visible:ring-3 focus-visible:ring-ring/50'
 
 // ============ helpers ============
 
@@ -61,6 +70,7 @@ type Player = {
   team_id: string
   team_name: string
   goals_in_tournament: number
+  is_active: boolean
 }
 
 type TeamElim = {
@@ -267,12 +277,30 @@ function TabResultados() {
   )
 }
 
+type PlayerPosition = 'GK' | 'DEF' | 'MID' | 'FWD'
+
+const POSICOES: { value: PlayerPosition; label: string }[] = [
+  { value: 'GK', label: 'Goleiro (GK)' },
+  { value: 'DEF', label: 'Defensor (DEF)' },
+  { value: 'MID', label: 'Meio-campo (MID)' },
+  { value: 'FWD', label: 'Atacante (FWD)' },
+]
+
+type TeamOption = { id: string; name: string }
+
 function TabArtilharia() {
   const [players, setPlayers] = useState<Player[]>([])
+  const [teams, setTeams] = useState<TeamOption[]>([])
   const [goals, setGoals] = useState<Record<string, string>>({})
   const [saving, setSaving] = useState<Record<string, boolean>>({})
+  const [toggling, setToggling] = useState<Record<string, boolean>>({})
   const [query, setQuery] = useState('')
   const [syncing, setSyncing] = useState(false)
+  const [teamFilter, setTeamFilter] = useState('')
+  const [addOpen, setAddOpen] = useState(false)
+  const [newName, setNewName] = useState('')
+  const [newPosition, setNewPosition] = useState<PlayerPosition>('FWD')
+  const [adding, setAdding] = useState(false)
 
   async function load() {
     const supabase = createClient()
@@ -281,20 +309,29 @@ function TabArtilharia() {
       name: string
       team_id: string
       goals_in_tournament: number
+      is_active: boolean
       teams: { name: string } | { name: string }[] | null
     }
     const PAGE_SIZE = 1000
     const data: Row[] = []
-    for (let from = 0; ; from += PAGE_SIZE) {
-      const { data: page } = await supabase
-        .from('players')
-        .select('id, name, team_id, goals_in_tournament, teams(name)')
-        .order('name')
-        .range(from, from + PAGE_SIZE - 1)
-      if (!page) break
-      data.push(...(page as Row[]))
-      if (page.length < PAGE_SIZE) break
-    }
+
+    const [{ data: teamsData }] = await Promise.all([
+      supabase.from('teams').select('id, name').order('name'),
+      (async () => {
+        for (let from = 0; ; from += PAGE_SIZE) {
+          const { data: page } = await supabase
+            .from('players')
+            .select('id, name, team_id, goals_in_tournament, is_active, teams(name)')
+            .order('name')
+            .range(from, from + PAGE_SIZE - 1)
+          if (!page) break
+          data.push(...(page as Row[]))
+          if (page.length < PAGE_SIZE) break
+        }
+      })(),
+    ])
+
+    if (teamsData) setTeams(teamsData)
     if (data.length) {
       const mapped = data.map(p => ({
         id: p.id,
@@ -302,6 +339,7 @@ function TabArtilharia() {
         team_id: p.team_id,
         team_name: Array.isArray(p.teams) ? (p.teams[0]?.name ?? '') : (p.teams?.name ?? ''),
         goals_in_tournament: p.goals_in_tournament ?? 0,
+        is_active: p.is_active ?? true,
       }))
       setPlayers(mapped)
       const g: Record<string, string> = {}
@@ -331,6 +369,49 @@ function TabArtilharia() {
     }
   }
 
+  async function alternarAtivo(player: Player) {
+    setToggling(s => ({ ...s, [player.id]: true }))
+    try {
+      const supabase = createClient()
+      const novo = !player.is_active
+      const { error } = await supabase.from('players').update({ is_active: novo }).eq('id', player.id)
+      if (error) throw error
+      setPlayers(ps => ps.map(p => (p.id === player.id ? { ...p, is_active: novo } : p)))
+      toast.success(`${player.name} ${novo ? 'reativado' : 'inativado'}`)
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'Erro ao atualizar')
+    } finally {
+      setToggling(s => ({ ...s, [player.id]: false }))
+    }
+  }
+
+  async function adicionarJogador() {
+    if (!teamFilter) { toast.error('Selecione uma seleção'); return }
+    const name = newName.trim()
+    if (!name) { toast.error('Informe o nome do jogador'); return }
+    setAdding(true)
+    try {
+      const supabase = createClient()
+      const { error } = await supabase.from('players').insert({
+        team_id: teamFilter,
+        name,
+        position: newPosition,
+        goals_in_tournament: 0,
+        is_active: true,
+      })
+      if (error) throw error
+      toast.success('Jogador adicionado!')
+      setNewName('')
+      setNewPosition('FWD')
+      setAddOpen(false)
+      await load()
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'Erro ao adicionar jogador')
+    } finally {
+      setAdding(false)
+    }
+  }
+
   async function sincronizar() {
     setSyncing(true)
     try {
@@ -344,19 +425,37 @@ function TabArtilharia() {
     }
   }
 
-  const filtered = players.filter(
-    p => !query || p.name.toLowerCase().includes(query.toLowerCase()) || p.team_name.toLowerCase().includes(query.toLowerCase())
-  )
+  const filtered = players.filter(p => {
+    if (teamFilter && p.team_id !== teamFilter) return false
+    return !query || p.name.toLowerCase().includes(query.toLowerCase()) || p.team_name.toLowerCase().includes(query.toLowerCase())
+  })
+
+  const selectedTeamName = teams.find(t => t.id === teamFilter)?.name
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-end">
+      <div className="flex items-center gap-2 flex-wrap">
+        <select value={teamFilter} onChange={e => setTeamFilter(e.target.value)} className={SELECT_CLASS}>
+          <option value="">Todas as seleções</option>
+          {teams.map(t => (
+            <option key={t.id} value={t.id}>{t.name}</option>
+          ))}
+        </select>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => setAddOpen(true)}
+          disabled={!teamFilter}
+          className="border-zinc-700 text-zinc-300 hover:bg-zinc-800"
+        >
+          + Adicionar jogador
+        </Button>
         <Button
           size="sm"
           variant="outline"
           onClick={sincronizar}
           disabled={syncing}
-          className="border-zinc-700 text-zinc-300 hover:bg-zinc-800"
+          className="ml-auto border-zinc-700 text-zinc-300 hover:bg-zinc-800"
         >
           {syncing ? <Loader2 className="size-3 animate-spin" /> : <><RefreshCw className="size-3" /> Sincronizar artilharia</>}
         </Button>
@@ -372,9 +471,19 @@ function TabArtilharia() {
       </div>
       <div className="space-y-2">
         {filtered.map(p => (
-          <div key={p.id} className="flex items-center gap-3 rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2">
+          <div
+            key={p.id}
+            className={`flex items-center gap-3 rounded-lg border px-3 py-2 ${
+              p.is_active ? 'border-zinc-800 bg-zinc-900' : 'border-zinc-800 bg-zinc-900/50 opacity-60'
+            }`}
+          >
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-zinc-200 truncate">{p.name}</p>
+              <div className="flex items-center gap-2">
+                <p className="text-sm font-medium text-zinc-200 truncate">{p.name}</p>
+                {!p.is_active && (
+                  <Badge className="bg-zinc-700/50 text-zinc-400 border-zinc-600 text-[10px] shrink-0">Inativo</Badge>
+                )}
+              </div>
               <p className="text-xs text-zinc-500">{p.team_name}</p>
             </div>
             <Input
@@ -392,9 +501,58 @@ function TabArtilharia() {
             >
               {saving[p.id] ? <Loader2 className="size-3 animate-spin" /> : 'OK'}
             </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => alternarAtivo(p)}
+              disabled={toggling[p.id]}
+              className="border-zinc-700 text-zinc-300 hover:bg-zinc-800 shrink-0"
+            >
+              {toggling[p.id] ? <Loader2 className="size-3 animate-spin" /> : p.is_active ? 'Inativar' : 'Reativar'}
+            </Button>
           </div>
         ))}
+        {filtered.length === 0 && (
+          <p className="text-center text-zinc-500 py-6 text-sm">Nenhum jogador encontrado</p>
+        )}
       </div>
+
+      <Dialog open={addOpen} onOpenChange={setAddOpen}>
+        <DialogContent className="bg-zinc-900 border-zinc-800 text-zinc-50">
+          <DialogHeader>
+            <DialogTitle>Adicionar jogador — {selectedTeamName}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="flex flex-col gap-1">
+              <Label className="text-xs text-zinc-400">Nome</Label>
+              <Input
+                value={newName}
+                onChange={e => setNewName(e.target.value)}
+                className="bg-zinc-800 border-zinc-700 text-zinc-50 h-9"
+              />
+            </div>
+            <div className="flex flex-col gap-1">
+              <Label className="text-xs text-zinc-400">Posição</Label>
+              <select
+                value={newPosition}
+                onChange={e => setNewPosition(e.target.value as PlayerPosition)}
+                className={SELECT_CLASS}
+              >
+                {POSICOES.map(p => (
+                  <option key={p.value} value={p.value}>{p.label}</option>
+                ))}
+              </select>
+            </div>
+            <Button
+              onClick={adicionarJogador}
+              disabled={adding}
+              className="w-full bg-emerald-500 hover:bg-emerald-600 text-white"
+            >
+              {adding ? <Loader2 className="size-4 animate-spin" /> : 'Adicionar jogador'}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

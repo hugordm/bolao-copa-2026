@@ -59,11 +59,11 @@ type GroupOrderBet = {
   edit_count: number
 }
 
-type Player = {
-  id: string
+type SpecialBetPlayer = {
   name: string
-  team_id: string
   goals_in_tournament: number
+  team_id: string
+  is_active: boolean
 }
 
 type SpecialBetType = 'champion' | 'top_scorer' | 'team_scorer'
@@ -76,6 +76,7 @@ type SpecialBet = {
   points_earned: number | null
   edit_count: number
   is_locked: boolean
+  player: SpecialBetPlayer | null
 }
 
 type ScoreConfig = {
@@ -478,7 +479,6 @@ export default function MeusPalpitesPage() {
   const [bets, setBets] = useState<Bet[]>([])
   const [teams, setTeams] = useState<Team[]>([])
   const [groupBets, setGroupBets] = useState<GroupOrderBet[]>([])
-  const [players, setPlayers] = useState<Player[]>([])
   const [specialBets, setSpecialBets] = useState<SpecialBet[]>([])
   const [config, setConfig] = useState<ScoreConfig>(DEFAULT_CONFIG)
   const [ranking, setRanking] = useState<RankingEntry[] | null>(null)
@@ -501,7 +501,6 @@ export default function MeusPalpitesPage() {
         { data: betsData },
         { data: teamsData },
         { data: groupBetsData },
-        { data: playersData },
         { data: specialBetsData },
         { data: configData },
         { data: rankingData },
@@ -521,10 +520,11 @@ export default function MeusPalpitesPage() {
           .from('group_order_bets')
           .select('id, group_name, team_1st_id, team_2nd_id, team_3rd_id, team_4th_id, points_earned, edit_count')
           .eq('user_id', user.id),
-        supabase.from('players').select('id, name, team_id, goals_in_tournament'),
         supabase
           .from('special_bets')
-          .select('id, bet_type, team_id, player_id, points_earned, edit_count, is_locked')
+          .select(
+            'id, bet_type, team_id, player_id, points_earned, edit_count, is_locked, player:players(name, goals_in_tournament, team_id, is_active)'
+          )
           .eq('user_id', user.id),
         supabase
           .from('score_config')
@@ -555,8 +555,20 @@ export default function MeusPalpitesPage() {
       if (betsData) setBets(betsData)
       if (teamsData) setTeams(teamsData)
       if (groupBetsData) setGroupBets(groupBetsData)
-      if (playersData) setPlayers(playersData)
-      if (specialBetsData) setSpecialBets(specialBetsData)
+      if (specialBetsData) {
+        setSpecialBets(
+          specialBetsData.map((b): SpecialBet => ({
+            id: b.id,
+            bet_type: b.bet_type,
+            team_id: b.team_id,
+            player_id: b.player_id,
+            points_earned: b.points_earned,
+            edit_count: b.edit_count,
+            is_locked: b.is_locked,
+            player: singleOrFirst<SpecialBetPlayer>(b.player) ?? null,
+          }))
+        )
+      }
       if (configData) setConfig(configData)
       if (rankingData) setRanking(rankingData as RankingEntry[])
       setLoading(false)
@@ -566,7 +578,6 @@ export default function MeusPalpitesPage() {
 
   const betsByMatch = useMemo(() => new Map(bets.map(b => [b.match_id, b])), [bets])
   const teamsById = useMemo(() => new Map(teams.map(t => [t.id, t])), [teams])
-  const playersById = useMemo(() => new Map(players.map(p => [p.id, p])), [players])
   const groupBetsByName = useMemo(() => new Map(groupBets.map(b => [b.group_name, b])), [groupBets])
 
   const groupNames = useMemo(() => {
@@ -606,7 +617,7 @@ export default function MeusPalpitesPage() {
   const teamScorerBets = specialBets.filter(b => b.bet_type === 'team_scorer')
 
   const championTeam = championBet?.team_id ? teamsById.get(championBet.team_id) : undefined
-  const topScorerPlayer = topScorerBet?.player_id ? playersById.get(topScorerBet.player_id) : undefined
+  const topScorerPlayer = topScorerBet?.player ?? undefined
   const topScorerTeam = topScorerPlayer ? teamsById.get(topScorerPlayer.team_id) : undefined
 
   const filtros: { label: string; value: FiltroPlacar }[] = [
@@ -707,6 +718,9 @@ export default function MeusPalpitesPage() {
                   <div className="flex items-center gap-2">
                     <Flag url={topScorerTeam?.flag_url} alt="" />
                     <span className="text-sm font-medium text-zinc-200">{topScorerPlayer.name}</span>
+                    {!topScorerPlayer.is_active && (
+                      <span className="text-xs text-zinc-500">(inativo)</span>
+                    )}
                     <span className="text-xs text-zinc-500">
                       ({topScorerPlayer.goals_in_tournament} gol{topScorerPlayer.goals_in_tournament === 1 ? '' : 's'})
                     </span>
@@ -726,12 +740,15 @@ export default function MeusPalpitesPage() {
                   <div className="space-y-3">
                     {teamScorerBets.map(bet => {
                       const team = bet.team_id ? teamsById.get(bet.team_id) : undefined
-                      const player = bet.player_id ? playersById.get(bet.player_id) : undefined
+                      const player = bet.player
                       return (
                         <EspecialCard key={bet.id} title={`Artilheiro — ${team?.name ?? '?'}`} bet={bet}>
                           <div className="flex items-center gap-2">
                             <Flag url={team?.flag_url} alt="" />
                             <span className="text-sm font-medium text-zinc-200">{player?.name ?? '?'}</span>
+                            {player && !player.is_active && (
+                              <span className="text-xs text-zinc-500">(inativo)</span>
+                            )}
                             {player && (
                               <span className="text-xs text-zinc-500">
                                 ({player.goals_in_tournament} gol{player.goals_in_tournament === 1 ? '' : 's'})
