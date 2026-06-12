@@ -159,16 +159,16 @@ export default function GruposTabelaPage() {
               <div className="border-b border-zinc-800 px-4 py-3">
                 <h3 className="font-bold text-zinc-50">Grupo {g.name}</h3>
               </div>
-              <table className="w-full text-sm">
+              <table className="w-full table-fixed text-sm">
                 <thead>
                   <tr className="text-left text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
                     <th className="px-3 py-2">Time</th>
-                    <th className="px-1.5 py-2 text-center">J</th>
-                    <th className="px-1.5 py-2 text-center">V</th>
-                    <th className="px-1.5 py-2 text-center">E</th>
-                    <th className="px-1.5 py-2 text-center">D</th>
-                    <th className="px-1.5 py-2 text-center">SG</th>
-                    <th className="px-1.5 py-2 text-center">PTS</th>
+                    <th className="w-[24px] px-1 py-2 text-center">J</th>
+                    <th className="w-[24px] px-1 py-2 text-center">V</th>
+                    <th className="w-[24px] px-1 py-2 text-center">E</th>
+                    <th className="w-[24px] px-1 py-2 text-center">D</th>
+                    <th className="w-[24px] px-1 py-2 text-center">SG</th>
+                    <th className="w-[24px] px-1 py-2 text-center">PTS</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-zinc-800">
@@ -208,18 +208,18 @@ export default function GruposTabelaPage() {
                         <td className="px-3 py-2">
                           <div className="flex items-center gap-2 min-w-0">
                             <Flag url={t.team.flag_url} alt="" />
-                            <span className="truncate font-medium text-zinc-100">{t.team.name}</span>
+                            <span className="flex-1 min-w-0 truncate font-medium text-zinc-100">{t.team.name}</span>
                             {badge && (
-                              <Badge className={`ml-auto shrink-0 ${badge.className}`}>{badge.text}</Badge>
+                              <Badge className={`shrink-0 px-1.5 py-0 text-[10px] ${badge.className}`}>{badge.text}</Badge>
                             )}
                           </div>
                         </td>
-                        <td className="px-1.5 py-2 text-center tabular-nums text-zinc-300">{t.played}</td>
-                        <td className="px-1.5 py-2 text-center tabular-nums text-zinc-300">{t.won}</td>
-                        <td className="px-1.5 py-2 text-center tabular-nums text-zinc-300">{t.drawn}</td>
-                        <td className="px-1.5 py-2 text-center tabular-nums text-zinc-300">{t.lost}</td>
-                        <td className="px-1.5 py-2 text-center tabular-nums text-zinc-300">{t.goal_difference}</td>
-                        <td className="px-1.5 py-2 text-center font-bold tabular-nums text-zinc-50">{t.points}</td>
+                        <td className="w-[24px] px-1 py-2 text-center tabular-nums text-zinc-300">{t.played}</td>
+                        <td className="w-[24px] px-1 py-2 text-center tabular-nums text-zinc-300">{t.won}</td>
+                        <td className="w-[24px] px-1 py-2 text-center tabular-nums text-zinc-300">{t.drawn}</td>
+                        <td className="w-[24px] px-1 py-2 text-center tabular-nums text-zinc-300">{t.lost}</td>
+                        <td className="w-[24px] px-1 py-2 text-center tabular-nums text-zinc-300">{t.goal_difference}</td>
+                        <td className="w-[24px] px-1 py-2 text-center font-bold tabular-nums text-zinc-50">{t.points}</td>
                       </motion.tr>
                     )
                   })}
