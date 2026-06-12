@@ -98,6 +98,7 @@ function TabResultados() {
   const [filter, setFilter] = useState('')
   const [lastSync, setLastSync] = useState<string | null>(null)
   const [syncing, setSyncing] = useState(false)
+  const [recalculating, setRecalculating] = useState(false)
   const [loading, setLoading] = useState(true)
 
   async function load() {
@@ -182,6 +183,19 @@ function TabResultados() {
     }
   }
 
+  async function recalcularPontos() {
+    setRecalculating(true)
+    try {
+      const data = await postJson('/api/admin/recalcular-pontos')
+      toast.success(`Pontos recalculados! ${data.matches} jogo(s) processados, ${data.updated} palpite(s) atualizados.`)
+      await load()
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'Erro ao recalcular pontos')
+    } finally {
+      setRecalculating(false)
+    }
+  }
+
   const filtered = matches.filter(
     m =>
       !filter ||
@@ -196,15 +210,26 @@ function TabResultados() {
         <p className="text-xs text-zinc-500">
           Última sincronização: {lastSync ? formatDateTime(lastSync) : 'nunca'}
         </p>
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={sincronizar}
-          disabled={syncing}
-          className="border-zinc-700 text-zinc-300 hover:bg-zinc-800"
-        >
-          {syncing ? <Loader2 className="size-3 animate-spin" /> : <><RefreshCw className="size-3" /> Sincronizar agora</>}
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={recalcularPontos}
+            disabled={recalculating}
+            className="border-zinc-700 text-zinc-300 hover:bg-zinc-800"
+          >
+            {recalculating ? <Loader2 className="size-3 animate-spin" /> : 'Recalcular pontos'}
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={sincronizar}
+            disabled={syncing}
+            className="border-zinc-700 text-zinc-300 hover:bg-zinc-800"
+          >
+            {syncing ? <Loader2 className="size-3 animate-spin" /> : <><RefreshCw className="size-3" /> Sincronizar agora</>}
+          </Button>
+        </div>
       </div>
       <div className="relative">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-zinc-500" />

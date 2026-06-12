@@ -78,6 +78,26 @@ export async function recalcularPontosDoJogo(
   return updated
 }
 
+/**
+ * Recalculates `points_earned` for every bet on every finished match.
+ * Used by the admin "Recalcular pontos" action to fix bets whose points were
+ * never computed (e.g. matches finished before the recalculation ran).
+ */
+export async function recalcularTodosPontos(
+  supabase: SupabaseClient
+): Promise<{ matches: number; updatedBets: number }> {
+  const { data: matches, error } = await supabase.from('matches').select('id').eq('is_finished', true)
+
+  if (error || !matches) return { matches: 0, updatedBets: 0 }
+
+  let updatedBets = 0
+  for (const match of matches) {
+    updatedBets += await recalcularPontosDoJogo(supabase, match.id)
+  }
+
+  return { matches: matches.length, updatedBets }
+}
+
 type StandingRow = {
   team_id: string
   group_name: string
