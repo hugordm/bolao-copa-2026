@@ -163,12 +163,12 @@ export default function GruposTabelaPage() {
                 <thead>
                   <tr className="text-left text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
                     <th className="px-3 py-2">Time</th>
-                    <th className="px-1.5 py-2 text-center whitespace-nowrap min-w-[32px]">J</th>
-                    <th className="px-1.5 py-2 text-center whitespace-nowrap min-w-[32px]">V</th>
-                    <th className="px-1.5 py-2 text-center whitespace-nowrap min-w-[32px]">E</th>
-                    <th className="px-1.5 py-2 text-center whitespace-nowrap min-w-[32px]">D</th>
-                    <th className="px-1.5 py-2 text-center whitespace-nowrap min-w-[32px]">SG</th>
-                    <th className="px-1.5 py-2 text-center whitespace-nowrap min-w-[32px]">PTS</th>
+                    <th className="px-1.5 py-2 text-center">J</th>
+                    <th className="px-1.5 py-2 text-center">V</th>
+                    <th className="px-1.5 py-2 text-center">E</th>
+                    <th className="px-1.5 py-2 text-center">D</th>
+                    <th className="px-1.5 py-2 text-center">SG</th>
+                    <th className="px-1.5 py-2 text-center">PTS</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-zinc-800">
@@ -214,12 +214,12 @@ export default function GruposTabelaPage() {
                             )}
                           </div>
                         </td>
-                        <td className="px-1.5 py-2 text-center tabular-nums text-zinc-300 whitespace-nowrap min-w-[32px]">{t.played}</td>
-                        <td className="px-1.5 py-2 text-center tabular-nums text-zinc-300 whitespace-nowrap min-w-[32px]">{t.won}</td>
-                        <td className="px-1.5 py-2 text-center tabular-nums text-zinc-300 whitespace-nowrap min-w-[32px]">{t.drawn}</td>
-                        <td className="px-1.5 py-2 text-center tabular-nums text-zinc-300 whitespace-nowrap min-w-[32px]">{t.lost}</td>
-                        <td className="px-1.5 py-2 text-center tabular-nums text-zinc-300 whitespace-nowrap min-w-[32px]">{t.goal_difference}</td>
-                        <td className="px-1.5 py-2 text-center font-bold tabular-nums text-zinc-50 whitespace-nowrap min-w-[32px]">{t.points}</td>
+                        <td className="px-1.5 py-2 text-center tabular-nums text-zinc-300">{t.played}</td>
+                        <td className="px-1.5 py-2 text-center tabular-nums text-zinc-300">{t.won}</td>
+                        <td className="px-1.5 py-2 text-center tabular-nums text-zinc-300">{t.drawn}</td>
+                        <td className="px-1.5 py-2 text-center tabular-nums text-zinc-300">{t.lost}</td>
+                        <td className="px-1.5 py-2 text-center tabular-nums text-zinc-300">{t.goal_difference}</td>
+                        <td className="px-1.5 py-2 text-center font-bold tabular-nums text-zinc-50">{t.points}</td>
                       </motion.tr>
                     )
                   })}
