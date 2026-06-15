@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { isLiveWithoutScore } from '@/lib/matchStatus'
 
 type Time = {
   name: string
@@ -36,6 +37,9 @@ function formatHora(iso: string) {
 }
 
 function JogoCard({ jogo }: { jogo: Jogo }) {
+  const semPlacar = isLiveWithoutScore(jogo.is_live, jogo.home_score, jogo.away_score)
+  const mostrarPlacar = jogo.is_finished || (jogo.is_live && !semPlacar)
+
   return (
     <div className="flex items-center justify-between rounded-xl border border-zinc-800 bg-zinc-900 px-4 py-3 gap-3">
       <div className="flex items-center gap-2 flex-1 min-w-0">
@@ -47,15 +51,20 @@ function JogoCard({ jogo }: { jogo: Jogo }) {
       </div>
 
       <div className="shrink-0 text-center">
-        {jogo.is_live && (
+        {jogo.is_live && !semPlacar && (
           <span className="mb-1 flex items-center justify-center gap-1 text-xs font-bold text-red-400">
             <span className="size-1.5 rounded-full bg-red-400 animate-pulse inline-block" />
             AO VIVO
           </span>
         )}
-        {jogo.is_finished ? (
+        {mostrarPlacar ? (
           <span className="text-base font-bold text-zinc-50">
             {jogo.home_score} – {jogo.away_score}
+          </span>
+        ) : semPlacar ? (
+          <span className="flex items-center justify-center gap-1 text-xs font-bold text-red-400 animate-pulse">
+            <span className="size-1.5 rounded-full bg-red-400 animate-pulse inline-block" />
+            EM ANDAMENTO
           </span>
         ) : (
           <span className="text-sm text-zinc-400">{jogo.kickoff_at ? formatHora(jogo.kickoff_at) : '--:--'}</span>

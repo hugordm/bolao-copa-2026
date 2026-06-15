@@ -917,6 +917,25 @@ function TabTabelaGrupos() {
       })
       const { error } = await supabase.from('group_standings').upsert(rows, { onConflict: 'team_id' })
       if (error) throw error
+
+      // Reordena automaticamente por pontos -> saldo de gols -> gols pró e
+      // atualiza a posição (1-4) de cada time de acordo com a nova ordem.
+      const reordered = [...teams].sort((a, b) => {
+        const ca = calc(a.team_id)
+        const cb = calc(b.team_id)
+        const gfA = parseInt((form[a.team_id] ?? EMPTY_STANDING_FORM).goals_for) || 0
+        const gfB = parseInt((form[b.team_id] ?? EMPTY_STANDING_FORM).goals_for) || 0
+        return cb.pts - ca.pts || cb.sg - ca.sg || gfB - gfA
+      })
+      const withPositions = reordered.map((t, i) => ({ ...t, position: i + 1 }))
+
+      const posResults = await Promise.all(
+        withPositions.map(t => supabase.from('group_standings').update({ position: t.position }).eq('team_id', t.team_id))
+      )
+      const posError = posResults.find(r => r.error)?.error
+      if (posError) throw posError
+
+      setTeams(withPositions)
       toast.success(`Grupo ${grupo} salvo!`)
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : 'Erro ao salvar')

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { isMatchLive } from '@/lib/matchStatus'
+import { isMatchLive, isLiveWithoutScore } from '@/lib/matchStatus'
 import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion'
@@ -114,7 +114,8 @@ function StatusBadge({ match, now }: { match: Match; now: number }) {
 
 function MatchCard({ match, now }: { match: Match; now: number }) {
   const aoVivo = isMatchLive(match.kickoff_at, match.is_finished, now)
-  const mostrarPlacar = match.is_finished || aoVivo
+  const semPlacar = isLiveWithoutScore(aoVivo, match.home_score, match.away_score)
+  const mostrarPlacar = (match.is_finished || aoVivo) && !semPlacar
 
   return (
     <div className="rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2.5">
@@ -134,6 +135,10 @@ function MatchCard({ match, now }: { match: Match; now: number }) {
             <span className="text-base font-bold tabular-nums text-zinc-50">
               {match.home_score ?? 0}–{match.away_score ?? 0}
             </span>
+          ) : semPlacar ? (
+            <Badge className="bg-red-500/20 text-red-400 border-red-500/30 animate-pulse whitespace-nowrap">
+              🔴 EM ANDAMENTO
+            </Badge>
           ) : (
             <span className="text-xs font-medium text-zinc-400 whitespace-nowrap">
               {formatDateTime(match.kickoff_at)}
