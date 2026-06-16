@@ -58,6 +58,7 @@ type Match = {
   home_score: number | null
   away_score: number | null
   is_finished: boolean
+  manually_edited: boolean
   phase: string
   group_name: string | null
   home_team: Time
@@ -107,7 +108,7 @@ function TabResultados() {
       supabase
         .from('matches')
         .select(
-          'id, kickoff_at, home_score, away_score, is_finished, phase, group_name, home_team:teams!home_team_id(name), away_team:teams!away_team_id(name)'
+          'id, kickoff_at, home_score, away_score, is_finished, manually_edited, phase, group_name, home_team:teams!home_team_id(name), away_team:teams!away_team_id(name)'
         )
         .order('kickoff_at'),
       supabase.from('score_config').select('last_sync').order('updated_at', { ascending: false }).limit(1).single(),
@@ -120,6 +121,7 @@ function TabResultados() {
         home_score: m.home_score,
         away_score: m.away_score,
         is_finished: m.is_finished,
+        manually_edited: m.manually_edited ?? false,
         phase: m.phase,
         group_name: m.group_name,
         home_team: singleOrFirst<Time>(m.home_team) ?? { name: '?' },
@@ -153,18 +155,37 @@ function TabResultados() {
       const away = sc.away !== '' ? parseInt(sc.away) : null
       const { error } = await supabase
         .from('matches')
-        .update({ home_score: home, away_score: away, is_finished: sc.finished })
+        .update({ home_score: home, away_score: away, is_finished: sc.finished, manually_edited: true })
         .eq('id', match.id)
       if (error) throw error
 
       if (sc.finished) {
         await postJson('/api/admin/calcular-pontos', { match_id: match.id })
       }
+      setMatches(ms => ms.map(m => m.id === match.id ? { ...m, manually_edited: true } : m))
       toast.success('Jogo atualizado!')
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : 'Erro ao salvar')
     } finally {
       setSaving(s => ({ ...s, [match.id]: false }))
+    }
+  }
+
+  async function resetarAutomatico(match: Match) {
+    setSaving(s => ({ ...s, [`reset_${match.id}`]: true }))
+    try {
+      const supabase = createClient()
+      const { error } = await supabase
+        .from('matches')
+        .update({ manually_edited: false })
+        .eq('id', match.id)
+      if (error) throw error
+      setMatches(ms => ms.map(m => m.id === match.id ? { ...m, manually_edited: false } : m))
+      toast.success('Jogo voltará a ser atualizado pelo cron.')
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'Erro ao resetar')
+    } finally {
+      setSaving(s => ({ ...s, [`reset_${match.id}`]: false }))
     }
   }
 
@@ -249,10 +270,17 @@ function TabResultados() {
           {filtered.map(m => {
             const sc = scores[m.id] ?? { home: '', away: '', finished: false }
             return (
-              <div key={m.id} className="rounded-xl border border-zinc-800 bg-zinc-900 p-3">
-                <p className="text-xs text-zinc-500 mb-2">
-                  {m.phase}{m.group_name ? ` · Gr.${m.group_name}` : ''} · {formatDateTime(m.kickoff_at)}
-                </p>
+              <div key={m.id} className={`rounded-xl border p-3 ${m.manually_edited ? 'border-amber-500/50 bg-amber-500/5' : 'border-zinc-800 bg-zinc-900'}`}>
+                <div className="flex items-center gap-2 mb-2">
+                  <p className="text-xs text-zinc-500 flex-1">
+                    {m.phase}{m.group_name ? ` · Gr.${m.group_name}` : ''} · {formatDateTime(m.kickoff_at)}
+                  </p>
+                  {m.manually_edited && (
+                    <Badge className="bg-amber-500/20 text-amber-400 border-amber-500/30 text-[10px] shrink-0">
+                      Editado manualmente
+                    </Badge>
+                  )}
+                </div>
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="text-sm font-semibold text-zinc-100 flex-1 min-w-0 truncate">{m.home_team.name}</span>
                   <Input
@@ -274,7 +302,7 @@ function TabResultados() {
                   />
                   <span className="text-sm font-semibold text-zinc-100 flex-1 min-w-0 truncate text-right">{m.away_team.name}</span>
                 </div>
-                <div className="flex items-center gap-3 mt-2">
+                <div className="flex items-center gap-3 mt-2 flex-wrap">
                   <label className="flex items-center gap-1.5 text-xs text-zinc-400 cursor-pointer">
                     <input
                       type="checkbox"
@@ -284,6 +312,17 @@ function TabResultados() {
                     />
                     Encerrado
                   </label>
+                  {m.manually_edited && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => resetarAutomatico(m)}
+                      disabled={saving[`reset_${m.id}`]}
+                      className="border-amber-500/50 text-amber-400 hover:bg-amber-500/10 text-xs h-7"
+                    >
+                      {saving[`reset_${m.id}`] ? <Loader2 className="size-3 animate-spin" /> : 'Resetar para automático'}
+                    </Button>
+                  )}
                   <Button
                     size="sm"
                     onClick={() => salvar(m)}

@@ -15,7 +15,7 @@ export async function syncResultados(
   const externalIds = matches.map(m => m.id)
   const { data: rows, error: matchesError } = await supabase
     .from('matches')
-    .select('id, external_id, home_score, away_score, is_finished')
+    .select('id, external_id, home_score, away_score, is_finished, manually_edited')
     .in('external_id', externalIds)
 
   if (matchesError) throw new Error(matchesError.message)
@@ -28,6 +28,8 @@ export async function syncResultados(
   for (const m of matches) {
     const match = matchByExternalId.get(m.id)
     if (!match) continue
+
+    if (match.manually_edited) continue
 
     const changed =
       !match.is_finished || match.home_score !== m.homeScore || match.away_score !== m.awayScore
