@@ -29,18 +29,20 @@ export async function syncResultados(
     const match = matchByExternalId.get(m.id)
     if (!match) continue
 
-    if (match.manually_edited) continue
+    console.log('[sync] jogo', match.id, 'manually_edited:', match.manually_edited)
 
-    const changed =
-      !match.is_finished || match.home_score !== m.homeScore || match.away_score !== m.awayScore
+    if (!match.manually_edited) {
+      const changed =
+        !match.is_finished || match.home_score !== m.homeScore || match.away_score !== m.awayScore
 
-    if (changed) {
-      const { error } = await supabase
-        .from('matches')
-        .update({ home_score: m.homeScore, away_score: m.awayScore, is_finished: true })
-        .eq('id', match.id)
-      if (error) continue
-      updated++
+      if (changed) {
+        const { error } = await supabase
+          .from('matches')
+          .update({ home_score: m.homeScore, away_score: m.awayScore, is_finished: true })
+          .eq('id', match.id)
+        if (error) continue
+        updated++
+      }
     }
 
     calculated += await recalcularPontosDoJogo(supabase, match.id)
