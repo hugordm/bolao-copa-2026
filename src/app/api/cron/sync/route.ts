@@ -9,7 +9,7 @@ import { syncGrupos } from '@/lib/sync/grupos'
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
 
-const FIVE_MIN_MS = 5 * 60 * 1000
+const THIRTY_MIN_MS = 30 * 60 * 1000
 const TWO_HOURS_MS = 2 * 60 * 60 * 1000
 
 export async function GET(request: NextRequest) {
@@ -48,8 +48,8 @@ export async function POST(request: NextRequest) {
 
     const hasGamesToday = (gamesToday ?? 0) > 0
 
-    // Cache fresh: dados sincronizados há menos de 5 min, não chama a API.
-    if (sinceLastSync < FIVE_MIN_MS) {
+    // Cache fresh: dados sincronizados há menos de 30 min, não chama a API.
+    if (sinceLastSync < THIRTY_MIN_MS) {
       return Response.json({
         success: true,
         skipped: 'cache_fresh',

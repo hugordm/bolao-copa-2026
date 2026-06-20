@@ -1,9 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Match } from '@/lib/types'
-import { syncJogos } from '@/lib/sync/jogos'
 import { isMatchLive } from '@/lib/matchStatus'
-
-const CACHE_MS = 5 * 60 * 1000
 
 export type JogoDoDia = {
   id: string
@@ -20,31 +17,9 @@ export type JogoDoDia = {
 
 type TeamRef = { name: string; flag_url: string | null } | null
 
-/** Fetches matches for the given Brasília date (YYYY-MM-DD), syncing from Zafronix if the cache is stale. */
+/** Fetches matches for the given Brasília date (YYYY-MM-DD) from Supabase.
+ *  Reads only — Zafronix is called exclusively by the cron sync job. */
 export async function getJogosDoDia(supabase: SupabaseClient, date: string): Promise<JogoDoDia[]> {
-  const { data: config } = await supabase
-    .from('score_config')
-    .select('id, last_sync')
-    .order('updated_at', { ascending: false })
-    .limit(1)
-    .single()
-
-  const stale = !config?.last_sync || Date.now() - new Date(config.last_sync).getTime() > CACHE_MS
-
-  if (stale) {
-    try {
-      await syncJogos(supabase)
-      if (config?.id) {
-        await supabase
-          .from('score_config')
-          .update({ last_sync: new Date().toISOString() })
-          .eq('id', config.id)
-      }
-    } catch (err) {
-      console.error('getJogosDoDia sync error:', err)
-    }
-  }
-
   const dayStart = `${date}T00:00:00-03:00`
   const dayEnd = `${date}T23:59:59-03:00`
 
