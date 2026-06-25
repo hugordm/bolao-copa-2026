@@ -5,6 +5,9 @@ const BASE_URL = process.env.ZAFRONIX_API_URL ?? 'https://api.zafronix.com/fifa/
 /** World Cup 2026 is the only tournament this app cares about. */
 export const TOURNAMENT_YEAR = 2026
 
+/** Thrown when a Zafronix request hits the timeout, so callers can fall back to an empty result instead of failing the whole sync. */
+export class ZafronixTimeoutError extends Error {}
+
 /** Calls the Zafronix World Cup API. Logs and throws with the API's own error message on failure. */
 export async function fetchZafronix<T = unknown>(
   path: string,
@@ -23,11 +26,11 @@ export async function fetchZafronix<T = unknown>(
     res = await fetch(url.toString(), {
       headers: { 'X-API-Key': apiKey },
       cache: 'no-store',
-      signal: AbortSignal.timeout(25_000),
+      signal: AbortSignal.timeout(8_000),
     })
   } catch (err) {
     if (err instanceof Error && err.name === 'TimeoutError') {
-      throw new Error(`Zafronix API ${path}: timeout após 25s`)
+      throw new ZafronixTimeoutError(`Zafronix API ${path}: timeout após 8s`)
     }
     throw err
   }
@@ -181,20 +184,38 @@ export type ZafronixStandings = {
   groups: Record<string, ZafronixStandingEntry[]>
 }
 
-/** Fetches all 48 teams for the 2026 World Cup, including full squads (with goals) and group standings. */
+/** Fetches all 48 teams for the 2026 World Cup, including full squads (with goals) and group standings.
+ *  Returns an empty array on timeout instead of throwing, so the cron sync isn't blocked by a slow API. */
 export async function fetchTeams(): Promise<ZafronixTeam[]> {
-  return fetchZafronix<ZafronixTeam[]>('/teams', { tournament: TOURNAMENT_YEAR })
+  try {
+    return await fetchZafronix<ZafronixTeam[]>('/teams', { tournament: TOURNAMENT_YEAR })
+  } catch (err) {
+    if (err instanceof ZafronixTimeoutError) return []
+    throw err
+  }
 }
 
-/** Fetches all 104 matches for the 2026 World Cup. */
+/** Fetches all 104 matches for the 2026 World Cup.
+ *  Returns an empty array on timeout instead of throwing, so the cron sync isn't blocked by a slow API. */
 export async function fetchMatches(): Promise<ZafronixMatch[]> {
-  const data = await fetchZafronix<{ year: number; count: number; data: ZafronixMatch[] }>('/matches', {
-    year: TOURNAMENT_YEAR,
-  })
-  return data.data
+  try {
+    const data = await fetchZafronix<{ year: number; count: number; data: ZafronixMatch[] }>('/matches', {
+      year: TOURNAMENT_YEAR,
+    })
+    return data.data
+  } catch (err) {
+    if (err instanceof ZafronixTimeoutError) return []
+    throw err
+  }
 }
 
-/** Fetches group standings (with FIFA tiebreakers and qualification status) for the 2026 World Cup. */
+/** Fetches group standings (with FIFA tiebreakers and qualification status) for the 2026 World Cup.
+ *  Returns empty groups on timeout instead of throwing, so the cron sync isn't blocked by a slow API. */
 export async function fetchStandings(): Promise<ZafronixStandings> {
-  return fetchZafronix<ZafronixStandings>('/standings', { year: TOURNAMENT_YEAR })
+  try {
+    return await fetchZafronix<ZafronixStandings>('/standings', { year: TOURNAMENT_YEAR })
+  } catch (err) {
+    if (err instanceof ZafronixTimeoutError) return { year: TOURNAMENT_YEAR, groups: {} }
+    throw err
+  }
 }
