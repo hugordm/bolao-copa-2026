@@ -1,4 +1,5 @@
 import { NextRequest } from 'next/server'
+import { waitUntil } from '@vercel/functions'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { authorizeAdminRequest } from '@/lib/auth-admin'
 import { dateBrasilia } from '@/lib/zafronix'
@@ -11,6 +12,36 @@ export const maxDuration = 60
 
 const THIRTY_MIN_MS = 30 * 60 * 1000
 const TWO_HOURS_MS = 2 * 60 * 60 * 1000
+
+type AdminClient = ReturnType<typeof createAdminClient>
+
+async function runAllSyncs(supabase: AdminClient, configId: string | undefined) {
+  try {
+    const [resultados, artilharia, grupos] = await Promise.all([
+      syncResultados(supabase).catch(err => {
+        console.error('cron/sync resultados error:', err)
+        return { error: err instanceof Error ? err.message : 'Falha ao sincronizar resultados' }
+      }),
+      syncArtilharia(supabase).catch(err => {
+        console.error('cron/sync artilharia error:', err)
+        return { error: err instanceof Error ? err.message : 'Falha ao sincronizar artilharia' }
+      }),
+      syncGrupos(supabase).catch(err => {
+        console.error('cron/sync grupos error:', err)
+        return { error: err instanceof Error ? err.message : 'Falha ao sincronizar grupos' }
+      }),
+    ])
+
+    const timestamp = new Date().toISOString()
+    if (configId) {
+      await supabase.from('score_config').update({ last_sync: timestamp }).eq('id', configId)
+    }
+
+    console.log('cron/sync background concluído:', { timestamp, resultados, artilharia, grupos })
+  } catch (err: unknown) {
+    console.error('cron/sync background error:', err)
+  }
+}
 
 export async function GET(request: NextRequest) {
   return POST(request)
@@ -66,33 +97,14 @@ export async function POST(request: NextRequest) {
       })
     }
 
-    const [resultados, artilharia, grupos] = await Promise.all([
-      syncResultados(supabase).catch(err => {
-        console.error('cron/sync resultados error:', err)
-        return { error: err instanceof Error ? err.message : 'Falha ao sincronizar resultados' }
-      }),
-      syncArtilharia(supabase).catch(err => {
-        console.error('cron/sync artilharia error:', err)
-        return { error: err instanceof Error ? err.message : 'Falha ao sincronizar artilharia' }
-      }),
-      syncGrupos(supabase).catch(err => {
-        console.error('cron/sync grupos error:', err)
-        return { error: err instanceof Error ? err.message : 'Falha ao sincronizar grupos' }
-      }),
-    ])
-
-    const timestamp = new Date().toISOString()
-    if (config?.id) {
-      await supabase.from('score_config').update({ last_sync: timestamp }).eq('id', config.id)
-    }
+    // Dispara o sync em background e responde imediatamente, para o
+    // cron-job.org não estourar timeout esperando a API do Zafronix.
+    waitUntil(runAllSyncs(supabase, config?.id))
 
     return Response.json({
       success: true,
-      timestamp,
+      message: 'sync iniciado',
       games_today: gamesToday ?? 0,
-      resultados,
-      artilharia,
-      grupos,
     })
   } catch (err: unknown) {
     console.error('cron/sync error:', err)
