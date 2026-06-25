@@ -18,10 +18,19 @@ export async function fetchZafronix<T = unknown>(
     if (value !== undefined) url.searchParams.set(key, String(value))
   }
 
-  const res = await fetch(url.toString(), {
-    headers: { 'X-API-Key': apiKey },
-    cache: 'no-store',
-  })
+  let res: Response
+  try {
+    res = await fetch(url.toString(), {
+      headers: { 'X-API-Key': apiKey },
+      cache: 'no-store',
+      signal: AbortSignal.timeout(25_000),
+    })
+  } catch (err) {
+    if (err instanceof Error && err.name === 'TimeoutError') {
+      throw new Error(`Zafronix API ${path}: timeout após 25s`)
+    }
+    throw err
+  }
 
   const data = await res.json().catch(() => null)
 

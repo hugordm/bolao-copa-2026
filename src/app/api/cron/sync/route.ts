@@ -66,9 +66,20 @@ export async function POST(request: NextRequest) {
       })
     }
 
-    const resultados = await syncResultados(supabase)
-    const artilharia = await syncArtilharia(supabase)
-    const grupos = await syncGrupos(supabase)
+    const [resultados, artilharia, grupos] = await Promise.all([
+      syncResultados(supabase).catch(err => {
+        console.error('cron/sync resultados error:', err)
+        return { error: err instanceof Error ? err.message : 'Falha ao sincronizar resultados' }
+      }),
+      syncArtilharia(supabase).catch(err => {
+        console.error('cron/sync artilharia error:', err)
+        return { error: err instanceof Error ? err.message : 'Falha ao sincronizar artilharia' }
+      }),
+      syncGrupos(supabase).catch(err => {
+        console.error('cron/sync grupos error:', err)
+        return { error: err instanceof Error ? err.message : 'Falha ao sincronizar grupos' }
+      }),
+    ])
 
     const timestamp = new Date().toISOString()
     if (config?.id) {

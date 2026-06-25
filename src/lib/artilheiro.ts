@@ -5,11 +5,25 @@ import type { SupabaseClient } from '@supabase/supabase-js'
  * special bet for that team: awards `pts_team_scorer` to bets that picked
  * the winner (0 otherwise) and locks them. Used both by the manual admin
  * action and by sync/grupos when a team is eliminated.
+ *
+ * Only settles bets once the team is actually eliminated — while a team is
+ * still in the tournament its top scorer can keep changing, so bets must
+ * stay unlocked with points_earned at 0 (shown as "Pendente" in the UI).
  */
 export async function apurarArtilheiroSelecao(
   supabase: SupabaseClient,
   teamId: string
 ): Promise<{ winner: string | null; winnerId: string | null; betsCalculated: number }> {
+  const { data: team } = await supabase
+    .from('teams')
+    .select('is_eliminated')
+    .eq('id', teamId)
+    .single()
+
+  if (!team?.is_eliminated) {
+    return { winner: null, winnerId: null, betsCalculated: 0 }
+  }
+
   const { data: topPlayer } = await supabase
     .from('players')
     .select('id, name, goals_in_tournament')
