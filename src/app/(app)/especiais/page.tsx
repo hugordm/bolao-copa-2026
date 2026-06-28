@@ -312,7 +312,7 @@ function TabArtilheiroPorSelecao({
   const preenchidas = teams.filter(t => bets[`team_scorer_${t.id}`]?.player_id).length
 
   function openModal(team: Team) {
-    if (oitavasIniciadas) return
+    if (oitavasIniciadas || team.is_eliminated) return
     const cat = `team_scorer_${team.id}`
     setSelectedPlayer(bets[cat]?.player_id ?? null)
     setModalTeam(team)
@@ -360,7 +360,7 @@ function TabArtilheiroPorSelecao({
           return (
             <button
               key={t.id}
-              disabled={oitavasIniciadas}
+              disabled={oitavasIniciadas || t.is_eliminated}
               onClick={() => openModal(t)}
               className={`relative flex flex-col items-center gap-1 rounded-xl border p-2 transition-colors text-center disabled:cursor-not-allowed disabled:opacity-50 ${
                 tem ? 'border-emerald-500/50 bg-emerald-500/5' : 'border-zinc-700 bg-zinc-800 hover:border-zinc-600'
