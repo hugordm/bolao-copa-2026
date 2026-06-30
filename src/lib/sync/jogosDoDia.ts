@@ -15,6 +15,8 @@ export type JogoDoDia = {
   group: string | null
   resultado_tipo: 'normal' | 'prorrogacao' | 'penaltis' | null
   vencedor_penaltis_nome: string | null
+  home_score_penalties: number | null
+  away_score_penalties: number | null
 }
 
 type TeamRef = { name: string; flag_url: string | null } | null
@@ -28,7 +30,7 @@ export async function getJogosDoDia(supabase: SupabaseClient, date: string): Pro
   const { data: matches, error } = await supabase
     .from('matches')
     .select(
-      'id, kickoff_at, home_score, away_score, is_finished, phase, group_name, resultado_tipo, vencedor_penaltis:teams!vencedor_penaltis_id(name), home_team:teams!home_team_id(name, flag_url), away_team:teams!away_team_id(name, flag_url)'
+      'id, kickoff_at, home_score, away_score, is_finished, phase, group_name, resultado_tipo, home_score_penalties, away_score_penalties, vencedor_penaltis:teams!vencedor_penaltis_id(name), home_team:teams!home_team_id(name, flag_url), away_team:teams!away_team_id(name, flag_url)'
     )
     .gte('kickoff_at', dayStart)
     .lte('kickoff_at', dayEnd)
@@ -58,6 +60,8 @@ export async function getJogosDoDia(supabase: SupabaseClient, date: string): Pro
       group: m.group_name,
       resultado_tipo: (m.resultado_tipo as JogoDoDia['resultado_tipo']) ?? null,
       vencedor_penaltis_nome: vencedor?.name ?? null,
+      home_score_penalties: m.home_score_penalties ?? null,
+      away_score_penalties: m.away_score_penalties ?? null,
     }
   })
 }

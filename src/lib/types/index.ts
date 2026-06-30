@@ -40,6 +40,8 @@ export type Match = {
   external_id: string | null
   resultado_tipo: 'normal' | 'prorrogacao' | 'penaltis' | null
   vencedor_penaltis_id: string | null
+  home_score_penalties: number | null
+  away_score_penalties: number | null
   home_team?: Team
   away_team?: Team
 }

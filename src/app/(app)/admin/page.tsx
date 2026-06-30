@@ -67,6 +67,8 @@ type Match = {
   away_team_id: string
   resultado_tipo: 'normal' | 'prorrogacao' | 'penaltis'
   vencedor_penaltis_id: string
+  home_score_penalties: number | null
+  away_score_penalties: number | null
 }
 
 type Player = {
@@ -102,6 +104,8 @@ type ScoreState = {
   finished: boolean
   resultado_tipo: 'normal' | 'prorrogacao' | 'penaltis'
   vencedor_penaltis_id: string
+  home_penalties: string
+  away_penalties: string
 }
 
 function TabResultados() {
@@ -120,7 +124,7 @@ function TabResultados() {
       supabase
         .from('matches')
         .select(
-          'id, kickoff_at, home_score, away_score, is_finished, manually_edited, phase, group_name, home_team_id, away_team_id, resultado_tipo, vencedor_penaltis_id, home_team:teams!home_team_id(name), away_team:teams!away_team_id(name)'
+          'id, kickoff_at, home_score, away_score, is_finished, manually_edited, phase, group_name, home_team_id, away_team_id, resultado_tipo, vencedor_penaltis_id, home_score_penalties, away_score_penalties, home_team:teams!home_team_id(name), away_team:teams!away_team_id(name)'
         )
         .order('kickoff_at'),
       supabase.from('score_config').select('last_sync').order('updated_at', { ascending: false }).limit(1).single(),
@@ -142,6 +146,8 @@ function TabResultados() {
         away_team_id: m.away_team_id ?? '',
         resultado_tipo: (m.resultado_tipo as Match['resultado_tipo']) ?? 'normal',
         vencedor_penaltis_id: m.vencedor_penaltis_id ?? '',
+        home_score_penalties: m.home_score_penalties ?? null,
+        away_score_penalties: m.away_score_penalties ?? null,
       }))
       setMatches(mapped)
       const s: typeof scores = {}
@@ -152,6 +158,8 @@ function TabResultados() {
           finished: m.is_finished,
           resultado_tipo: m.resultado_tipo ?? 'normal',
           vencedor_penaltis_id: m.vencedor_penaltis_id ?? '',
+          home_penalties: m.home_score_penalties != null ? String(m.home_score_penalties) : '',
+          away_penalties: m.away_score_penalties != null ? String(m.away_score_penalties) : '',
         }
       }
       setScores(s)
@@ -171,6 +179,16 @@ function TabResultados() {
       const supabase = createClient()
       const home = sc.home !== '' ? parseInt(sc.home) : null
       const away = sc.away !== '' ? parseInt(sc.away) : null
+      const homePen = sc.home_penalties !== '' ? parseInt(sc.home_penalties) : null
+      const awayPen = sc.away_penalties !== '' ? parseInt(sc.away_penalties) : null
+      let vencedorId: string | null = null
+      if (sc.resultado_tipo === 'penaltis') {
+        if (homePen != null && awayPen != null) {
+          vencedorId = homePen > awayPen ? match.home_team_id : match.away_team_id
+        } else if (sc.vencedor_penaltis_id) {
+          vencedorId = sc.vencedor_penaltis_id
+        }
+      }
       const { error } = await supabase
         .from('matches')
         .update({
@@ -179,7 +197,9 @@ function TabResultados() {
           is_finished: sc.finished,
           manually_edited: true,
           resultado_tipo: sc.resultado_tipo || 'normal',
-          vencedor_penaltis_id: sc.resultado_tipo === 'penaltis' && sc.vencedor_penaltis_id ? sc.vencedor_penaltis_id : null,
+          vencedor_penaltis_id: vencedorId,
+          home_score_penalties: sc.resultado_tipo === 'penaltis' ? homePen : null,
+          away_score_penalties: sc.resultado_tipo === 'penaltis' ? awayPen : null,
         })
         .eq('id', match.id)
       if (error) throw error
@@ -347,15 +367,26 @@ function TabResultados() {
                     <option value="penaltis">Pênaltis</option>
                   </select>
                   {sc.resultado_tipo === 'penaltis' && (
-                    <select
-                      value={sc.vencedor_penaltis_id ?? ''}
-                      onChange={e => setScores(s => ({ ...s, [m.id]: { ...sc, vencedor_penaltis_id: e.target.value } }))}
-                      className={SELECT_CLASS}
-                    >
-                      <option value="">Vencedor nos pênaltis...</option>
-                      <option value={m.home_team_id}>{m.home_team.name}</option>
-                      <option value={m.away_team_id}>{m.away_team.name}</option>
-                    </select>
+                    <div className="flex items-center gap-1">
+                      <span className="text-xs text-zinc-400 whitespace-nowrap">Pen.:</span>
+                      <Input
+                        type="number"
+                        min={0}
+                        placeholder="Casa"
+                        value={sc.home_penalties}
+                        onChange={e => setScores(s => ({ ...s, [m.id]: { ...sc, home_penalties: e.target.value } }))}
+                        className="w-14 text-center bg-zinc-800 border-zinc-700 text-zinc-50 h-8"
+                      />
+                      <span className="text-zinc-500">×</span>
+                      <Input
+                        type="number"
+                        min={0}
+                        placeholder="Vis."
+                        value={sc.away_penalties}
+                        onChange={e => setScores(s => ({ ...s, [m.id]: { ...sc, away_penalties: e.target.value } }))}
+                        className="w-14 text-center bg-zinc-800 border-zinc-700 text-zinc-50 h-8"
+                      />
+                    </div>
                   )}
                   {m.manually_edited && (
                     <Button

@@ -22,6 +22,8 @@ type Jogo = {
   group: string | null
   resultado_tipo: 'normal' | 'prorrogacao' | 'penaltis' | null
   vencedor_penaltis_nome: string | null
+  home_score_penalties: number | null
+  away_score_penalties: number | null
 }
 
 type PosicaoData = {
@@ -68,7 +70,11 @@ function JogoCard({ jogo }: { jogo: Jogo }) {
               <p className="text-[10px] text-zinc-500 mt-0.5">após prorrogação</p>
             )}
             {jogo.is_finished && jogo.resultado_tipo === 'penaltis' && jogo.vencedor_penaltis_nome && (
-              <p className="text-[10px] text-zinc-500 mt-0.5">{jogo.vencedor_penaltis_nome} venceu nos pênaltis</p>
+              <p className="text-[10px] text-zinc-500 mt-0.5">
+                {jogo.vencedor_penaltis_nome} venceu{jogo.home_score_penalties != null && jogo.away_score_penalties != null
+                  ? ` por ${jogo.vencedor_penaltis_nome === jogo.home_team.name ? jogo.home_score_penalties : jogo.away_score_penalties} a ${jogo.vencedor_penaltis_nome === jogo.home_team.name ? jogo.away_score_penalties : jogo.home_score_penalties}`
+                  : ''} nos pênaltis
+              </p>
             )}
           </div>
         ) : semPlacar ? (
