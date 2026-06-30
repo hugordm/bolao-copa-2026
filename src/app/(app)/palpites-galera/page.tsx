@@ -19,6 +19,8 @@ type Match = {
   group_name: string | null
   home_team: Time
   away_team: Time
+  resultado_tipo: 'normal' | 'prorrogacao' | 'penaltis' | null
+  vencedor_penaltis_nome: string | null
 }
 
 type Bet = {
@@ -194,9 +196,17 @@ function MatchCard({
           <span className="truncate font-semibold text-zinc-100">{match.away_team.name}</span>
           <Flag url={match.away_team.flag_url} alt="" />
         </div>
-        <span className="shrink-0 text-xs font-semibold text-zinc-500">
-          {match.is_finished ? 'Encerrado' : formatHora(match.kickoff_at)}
-        </span>
+        <div className="shrink-0 text-right">
+          <span className="text-xs font-semibold text-zinc-500">
+            {match.is_finished ? 'Encerrado' : formatHora(match.kickoff_at)}
+          </span>
+          {match.is_finished && match.resultado_tipo === 'prorrogacao' && (
+            <p className="text-[10px] text-zinc-600 whitespace-nowrap">após prorrogação</p>
+          )}
+          {match.is_finished && match.resultado_tipo === 'penaltis' && match.vencedor_penaltis_nome && (
+            <p className="text-[10px] text-zinc-600 whitespace-nowrap">{match.vencedor_penaltis_nome} nos pênaltis</p>
+          )}
+        </div>
       </div>
 
       <div className="divide-y divide-zinc-800/70">
@@ -407,7 +417,7 @@ export default function PalpitesGaleraPage() {
         supabase
           .from('matches')
           .select(
-            'id, kickoff_at, home_score, away_score, is_finished, phase, group_name, home_team:teams!home_team_id(name, flag_url), away_team:teams!away_team_id(name, flag_url)'
+            'id, kickoff_at, home_score, away_score, is_finished, phase, group_name, resultado_tipo, vencedor_penaltis:teams!vencedor_penaltis_id(name), home_team:teams!home_team_id(name, flag_url), away_team:teams!away_team_id(name, flag_url)'
           )
           .order('kickoff_at', { ascending: true }),
         supabase
@@ -434,6 +444,8 @@ export default function PalpitesGaleraPage() {
             group_name: m.group_name,
             home_team: singleOrFirst<Time>(m.home_team) ?? { name: '?', flag_url: null },
             away_team: singleOrFirst<Time>(m.away_team) ?? { name: '?', flag_url: null },
+            resultado_tipo: (m.resultado_tipo as Match['resultado_tipo']) ?? null,
+            vencedor_penaltis_nome: (singleOrFirst<{ name: string }>(m.vencedor_penaltis as { name: string } | { name: string }[]))?.name ?? null,
           }))
         )
       }

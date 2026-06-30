@@ -13,6 +13,8 @@ export type JogoDoDia = {
   is_live: boolean
   phase: Match['phase']
   group: string | null
+  resultado_tipo: 'normal' | 'prorrogacao' | 'penaltis' | null
+  vencedor_penaltis_nome: string | null
 }
 
 type TeamRef = { name: string; flag_url: string | null } | null
@@ -26,7 +28,7 @@ export async function getJogosDoDia(supabase: SupabaseClient, date: string): Pro
   const { data: matches, error } = await supabase
     .from('matches')
     .select(
-      'id, kickoff_at, home_score, away_score, is_finished, phase, group_name, home_team:teams!home_team_id(name, flag_url), away_team:teams!away_team_id(name, flag_url)'
+      'id, kickoff_at, home_score, away_score, is_finished, phase, group_name, resultado_tipo, vencedor_penaltis:teams!vencedor_penaltis_id(name), home_team:teams!home_team_id(name, flag_url), away_team:teams!away_team_id(name, flag_url)'
     )
     .gte('kickoff_at', dayStart)
     .lte('kickoff_at', dayEnd)
@@ -41,6 +43,7 @@ export async function getJogosDoDia(supabase: SupabaseClient, date: string): Pro
 
     const home = (Array.isArray(m.home_team) ? m.home_team[0] : m.home_team) as TeamRef
     const away = (Array.isArray(m.away_team) ? m.away_team[0] : m.away_team) as TeamRef
+    const vencedor = (Array.isArray(m.vencedor_penaltis) ? m.vencedor_penaltis[0] : m.vencedor_penaltis) as TeamRef
 
     return {
       id: m.id,
@@ -53,6 +56,8 @@ export async function getJogosDoDia(supabase: SupabaseClient, date: string): Pro
       is_live: isLive,
       phase: m.phase,
       group: m.group_name,
+      resultado_tipo: (m.resultado_tipo as JogoDoDia['resultado_tipo']) ?? null,
+      vencedor_penaltis_nome: vencedor?.name ?? null,
     }
   })
 }

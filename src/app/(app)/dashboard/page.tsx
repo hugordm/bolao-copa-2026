@@ -20,6 +20,8 @@ type Jogo = {
   is_live: boolean
   phase: string
   group: string | null
+  resultado_tipo: 'normal' | 'prorrogacao' | 'penaltis' | null
+  vencedor_penaltis_nome: string | null
 }
 
 type PosicaoData = {
@@ -58,9 +60,17 @@ function JogoCard({ jogo }: { jogo: Jogo }) {
           </span>
         )}
         {mostrarPlacar ? (
-          <span className="text-base font-bold text-zinc-50">
-            {jogo.home_score} – {jogo.away_score}
-          </span>
+          <div>
+            <span className="text-base font-bold text-zinc-50">
+              {jogo.home_score} – {jogo.away_score}
+            </span>
+            {jogo.is_finished && jogo.resultado_tipo === 'prorrogacao' && (
+              <p className="text-[10px] text-zinc-500 mt-0.5">após prorrogação</p>
+            )}
+            {jogo.is_finished && jogo.resultado_tipo === 'penaltis' && jogo.vencedor_penaltis_nome && (
+              <p className="text-[10px] text-zinc-500 mt-0.5">{jogo.vencedor_penaltis_nome} venceu nos pênaltis</p>
+            )}
+          </div>
         ) : semPlacar ? (
           <span className="flex items-center justify-center gap-1 text-xs font-bold text-red-400 animate-pulse">
             <span className="size-1.5 rounded-full bg-red-400 animate-pulse inline-block" />

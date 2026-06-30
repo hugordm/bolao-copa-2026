@@ -63,6 +63,10 @@ type Match = {
   group_name: string | null
   home_team: Time
   away_team: Time
+  home_team_id: string
+  away_team_id: string
+  resultado_tipo: 'normal' | 'prorrogacao' | 'penaltis'
+  vencedor_penaltis_id: string
 }
 
 type Player = {
@@ -92,9 +96,17 @@ type UserRow = {
 
 // ============ sub-tabs ============
 
+type ScoreState = {
+  home: string
+  away: string
+  finished: boolean
+  resultado_tipo: 'normal' | 'prorrogacao' | 'penaltis'
+  vencedor_penaltis_id: string
+}
+
 function TabResultados() {
   const [matches, setMatches] = useState<Match[]>([])
-  const [scores, setScores] = useState<Record<string, { home: string; away: string; finished: boolean }>>({})
+  const [scores, setScores] = useState<Record<string, ScoreState>>({})
   const [saving, setSaving] = useState<Record<string, boolean>>({})
   const [filter, setFilter] = useState('')
   const [lastSync, setLastSync] = useState<string | null>(null)
@@ -108,7 +120,7 @@ function TabResultados() {
       supabase
         .from('matches')
         .select(
-          'id, kickoff_at, home_score, away_score, is_finished, manually_edited, phase, group_name, home_team:teams!home_team_id(name), away_team:teams!away_team_id(name)'
+          'id, kickoff_at, home_score, away_score, is_finished, manually_edited, phase, group_name, home_team_id, away_team_id, resultado_tipo, vencedor_penaltis_id, home_team:teams!home_team_id(name), away_team:teams!away_team_id(name)'
         )
         .order('kickoff_at'),
       supabase.from('score_config').select('last_sync').order('updated_at', { ascending: false }).limit(1).single(),
@@ -126,6 +138,10 @@ function TabResultados() {
         group_name: m.group_name,
         home_team: singleOrFirst<Time>(m.home_team) ?? { name: '?' },
         away_team: singleOrFirst<Time>(m.away_team) ?? { name: '?' },
+        home_team_id: m.home_team_id ?? '',
+        away_team_id: m.away_team_id ?? '',
+        resultado_tipo: (m.resultado_tipo as Match['resultado_tipo']) ?? 'normal',
+        vencedor_penaltis_id: m.vencedor_penaltis_id ?? '',
       }))
       setMatches(mapped)
       const s: typeof scores = {}
@@ -134,6 +150,8 @@ function TabResultados() {
           home: m.home_score != null ? String(m.home_score) : '',
           away: m.away_score != null ? String(m.away_score) : '',
           finished: m.is_finished,
+          resultado_tipo: m.resultado_tipo ?? 'normal',
+          vencedor_penaltis_id: m.vencedor_penaltis_id ?? '',
         }
       }
       setScores(s)
@@ -155,7 +173,14 @@ function TabResultados() {
       const away = sc.away !== '' ? parseInt(sc.away) : null
       const { error } = await supabase
         .from('matches')
-        .update({ home_score: home, away_score: away, is_finished: sc.finished, manually_edited: true })
+        .update({
+          home_score: home,
+          away_score: away,
+          is_finished: sc.finished,
+          manually_edited: true,
+          resultado_tipo: sc.resultado_tipo || 'normal',
+          vencedor_penaltis_id: sc.resultado_tipo === 'penaltis' && sc.vencedor_penaltis_id ? sc.vencedor_penaltis_id : null,
+        })
         .eq('id', match.id)
       if (error) throw error
 
@@ -312,6 +337,26 @@ function TabResultados() {
                     />
                     Encerrado
                   </label>
+                  <select
+                    value={sc.resultado_tipo ?? 'normal'}
+                    onChange={e => setScores(s => ({ ...s, [m.id]: { ...sc, resultado_tipo: e.target.value as ScoreState['resultado_tipo'], vencedor_penaltis_id: '' } }))}
+                    className={SELECT_CLASS}
+                  >
+                    <option value="normal">Normal</option>
+                    <option value="prorrogacao">Prorrogação</option>
+                    <option value="penaltis">Pênaltis</option>
+                  </select>
+                  {sc.resultado_tipo === 'penaltis' && (
+                    <select
+                      value={sc.vencedor_penaltis_id ?? ''}
+                      onChange={e => setScores(s => ({ ...s, [m.id]: { ...sc, vencedor_penaltis_id: e.target.value } }))}
+                      className={SELECT_CLASS}
+                    >
+                      <option value="">Vencedor nos pênaltis...</option>
+                      <option value={m.home_team_id}>{m.home_team.name}</option>
+                      <option value={m.away_team_id}>{m.away_team.name}</option>
+                    </select>
+                  )}
                   {m.manually_edited && (
                     <Button
                       size="sm"

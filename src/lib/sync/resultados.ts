@@ -2,6 +2,8 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { recalcularPontosDoJogo } from '@/lib/scoring'
 import { fetchMatches } from '@/lib/zafronix'
 
+const THREE_HOURS_MS = 3 * 60 * 60 * 1000
+
 /** Updates finished matches from Zafronix and recalculates bet points. */
 export async function syncResultados(
   supabase: SupabaseClient
@@ -46,6 +48,26 @@ export async function syncResultados(
     }
 
     calculated += await recalcularPontosDoJogo(supabase, match.id)
+  }
+
+  // Detecta jogos que estão marcados como ao vivo há mais de 3 horas sem atualização
+  const cutoff = new Date(Date.now() - THREE_HOURS_MS).toISOString()
+  const { data: stuckMatches } = await supabase
+    .from('matches')
+    .select('id, external_id, kickoff_at')
+    .eq('is_finished', false)
+    .lte('kickoff_at', cutoff)
+
+  for (const stuck of stuckMatches ?? []) {
+    if (!stuck.external_id) {
+      console.warn(
+        `[sync] AVISO: jogo ${stuck.id} (kickoff ${stuck.kickoff_at}) está ao vivo há mais de 3h e NÃO TEM external_id — não pode ser atualizado pelo sync automático`
+      )
+    } else {
+      console.warn(
+        `[sync] AVISO: jogo ${stuck.id} (external_id ${stuck.external_id}, kickoff ${stuck.kickoff_at}) está ao vivo há mais de 3h sem ser marcado como encerrado`
+      )
+    }
   }
 
   return { updated, calculated }

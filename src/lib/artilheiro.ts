@@ -1,14 +1,17 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 
 /**
- * Determines the top scorer for a team and settles every `team_scorer`
+ * Determines the top scorer(s) for a team and settles every `team_scorer`
  * special bet for that team: awards `pts_team_scorer` to bets that picked
- * the winner (0 otherwise) and locks them. Used both by the manual admin
- * action and by sync/grupos when a team is eliminated.
+ * any of the tied top scorers (0 otherwise) and locks them. Used both by
+ * the manual admin action and by sync/grupos when a team is eliminated.
  *
  * Only settles bets once the team is actually eliminated — while a team is
  * still in the tournament its top scorer can keep changing, so bets must
  * stay unlocked with points_earned at 0 (shown as "Pendente" in the UI).
+ *
+ * In case of a tie (multiple players with the same goals), any bet that
+ * picked one of the tied players counts as a correct guess.
  */
 export async function apurarArtilheiroSelecao(
   supabase: SupabaseClient,
@@ -24,14 +27,17 @@ export async function apurarArtilheiroSelecao(
     return { winner: null, winnerId: null, betsCalculated: 0 }
   }
 
-  const { data: topPlayer } = await supabase
+  const { data: players } = await supabase
     .from('players')
     .select('id, name, goals_in_tournament')
     .eq('team_id', teamId)
     .order('goals_in_tournament', { ascending: false })
-    .order('name', { ascending: true })
-    .limit(1)
-    .maybeSingle()
+
+  const maxGoals = players?.[0]?.goals_in_tournament ?? 0
+  const topPlayers = maxGoals > 0
+    ? (players ?? []).filter(p => p.goals_in_tournament === maxGoals)
+    : []
+  const topPlayerIds = new Set(topPlayers.map(p => p.id))
 
   const { data: config } = await supabase
     .from('score_config')
@@ -50,7 +56,7 @@ export async function apurarArtilheiroSelecao(
 
   let betsCalculated = 0
   for (const bet of bets ?? []) {
-    const points = topPlayer && bet.player_id === topPlayer.id ? ptsTeamScorer : 0
+    const points = bet.player_id && topPlayerIds.has(bet.player_id) ? ptsTeamScorer : 0
     const { error } = await supabase
       .from('special_bets')
       .update({ points_earned: points, is_locked: true })
@@ -58,9 +64,8 @@ export async function apurarArtilheiroSelecao(
     if (!error) betsCalculated++
   }
 
-  return {
-    winner: topPlayer?.name ?? null,
-    winnerId: topPlayer?.id ?? null,
-    betsCalculated,
-  }
+  const winner = topPlayers.length > 0 ? topPlayers.map(p => p.name).join(' / ') : null
+  const winnerId = topPlayers.length === 1 ? topPlayers[0].id : null
+
+  return { winner, winnerId, betsCalculated }
 }

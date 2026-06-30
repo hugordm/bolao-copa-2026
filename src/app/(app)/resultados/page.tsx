@@ -21,6 +21,8 @@ type Match = {
   group_name: string | null
   home_team: Time
   away_team: Time
+  resultado_tipo: 'normal' | 'prorrogacao' | 'penaltis' | null
+  vencedor_penaltis_nome: string | null
 }
 
 const PHASES: { value: Phase; label: string }[] = [
@@ -132,9 +134,17 @@ function MatchCard({ match, now }: { match: Match; now: number }) {
         </div>
         <div className="shrink-0 px-2 text-center">
           {mostrarPlacar ? (
-            <span className="text-base font-bold tabular-nums text-zinc-50">
-              {match.home_score ?? 0}–{match.away_score ?? 0}
-            </span>
+            <div>
+              <span className="text-base font-bold tabular-nums text-zinc-50">
+                {match.home_score ?? 0}–{match.away_score ?? 0}
+              </span>
+              {match.is_finished && match.resultado_tipo === 'prorrogacao' && (
+                <p className="text-[10px] text-zinc-500 mt-0.5 whitespace-nowrap">após prorrogação</p>
+              )}
+              {match.is_finished && match.resultado_tipo === 'penaltis' && match.vencedor_penaltis_nome && (
+                <p className="text-[10px] text-zinc-500 mt-0.5 whitespace-nowrap">{match.vencedor_penaltis_nome} nos pênaltis</p>
+              )}
+            </div>
           ) : semPlacar ? (
             <Badge className="bg-red-500/20 text-red-400 border-red-500/30 animate-pulse whitespace-nowrap">
               🔴 EM ANDAMENTO
@@ -180,7 +190,7 @@ export default function ResultadosPage() {
     const { data } = await supabase
       .from('matches')
       .select(
-        'id, kickoff_at, home_score, away_score, is_finished, phase, group_name, home_team:teams!home_team_id(name, flag_url), away_team:teams!away_team_id(name, flag_url)'
+        'id, kickoff_at, home_score, away_score, is_finished, phase, group_name, resultado_tipo, vencedor_penaltis:teams!vencedor_penaltis_id(name), home_team:teams!home_team_id(name, flag_url), away_team:teams!away_team_id(name, flag_url)'
       )
       .order('kickoff_at', { ascending: true })
 
@@ -196,6 +206,8 @@ export default function ResultadosPage() {
           group_name: m.group_name,
           home_team: singleOrFirst<Time>(m.home_team) ?? { name: '?', flag_url: null },
           away_team: singleOrFirst<Time>(m.away_team) ?? { name: '?', flag_url: null },
+          resultado_tipo: (m.resultado_tipo as Match['resultado_tipo']) ?? null,
+          vencedor_penaltis_nome: (singleOrFirst<{ name: string }>(m.vencedor_penaltis as { name: string } | { name: string }[]))?.name ?? null,
         }))
       )
     }
