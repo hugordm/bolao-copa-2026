@@ -108,6 +108,23 @@ type ScoreState = {
   away_penalties: string
 }
 
+const PHASES = [
+  { value: 'groups', label: 'Fase de Grupos' },
+  { value: 'r32', label: 'Rodada de 32' },
+  { value: 'r16', label: 'Oitavas de final' },
+  { value: 'qf', label: 'Quartas de final' },
+  { value: 'sf', label: 'Semifinal' },
+  { value: '3rd', label: '3º lugar' },
+  { value: 'final', label: 'Final' },
+]
+
+type NewMatchForm = {
+  home_team_id: string
+  away_team_id: string
+  kickoff_at: string
+  phase: string
+}
+
 function TabResultados() {
   const [matches, setMatches] = useState<Match[]>([])
   const [scores, setScores] = useState<Record<string, ScoreState>>({})
@@ -117,10 +134,14 @@ function TabResultados() {
   const [syncing, setSyncing] = useState(false)
   const [recalculating, setRecalculating] = useState(false)
   const [loading, setLoading] = useState(true)
+  const [teams, setTeams] = useState<TeamOption[]>([])
+  const [addMatchOpen, setAddMatchOpen] = useState(false)
+  const [newMatch, setNewMatch] = useState<NewMatchForm>({ home_team_id: '', away_team_id: '', kickoff_at: '', phase: '' })
+  const [addingMatch, setAddingMatch] = useState(false)
 
   async function load() {
     const supabase = createClient()
-    const [{ data: matchData }, { data: configData }] = await Promise.all([
+    const [{ data: matchData }, { data: configData }, { data: teamsData }] = await Promise.all([
       supabase
         .from('matches')
         .select(
@@ -128,7 +149,9 @@ function TabResultados() {
         )
         .order('kickoff_at'),
       supabase.from('score_config').select('last_sync').order('updated_at', { ascending: false }).limit(1).single(),
+      supabase.from('teams').select('id, name').order('name'),
     ])
+    if (teamsData) setTeams(teamsData)
 
     if (matchData) {
       const mapped: Match[] = matchData.map(m => ({
@@ -262,6 +285,36 @@ function TabResultados() {
     }
   }
 
+  async function adicionarJogo() {
+    if (!newMatch.home_team_id) { toast.error('Selecione o time da casa'); return }
+    if (!newMatch.away_team_id) { toast.error('Selecione o time visitante'); return }
+    if (newMatch.home_team_id === newMatch.away_team_id) { toast.error('Time da casa e visitante devem ser diferentes'); return }
+    if (!newMatch.kickoff_at) { toast.error('Informe a data e hora do jogo'); return }
+    if (!newMatch.phase) { toast.error('Selecione a fase'); return }
+    setAddingMatch(true)
+    try {
+      const supabase = createClient()
+      const { error } = await supabase.from('matches').insert({
+        home_team_id: newMatch.home_team_id,
+        away_team_id: newMatch.away_team_id,
+        kickoff_at: new Date(newMatch.kickoff_at).toISOString(),
+        phase: newMatch.phase,
+        is_finished: false,
+        home_score: null,
+        away_score: null,
+      })
+      if (error) throw error
+      toast.success('Jogo adicionado!')
+      setAddMatchOpen(false)
+      setNewMatch({ home_team_id: '', away_team_id: '', kickoff_at: '', phase: '' })
+      await load()
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'Erro ao adicionar jogo')
+    } finally {
+      setAddingMatch(false)
+    }
+  }
+
   const filtered = matches.filter(
     m =>
       !filter ||
@@ -276,7 +329,15 @@ function TabResultados() {
         <p className="text-xs text-zinc-500">
           Última sincronização: {lastSync ? formatDateTime(lastSync) : 'nunca'}
         </p>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => setAddMatchOpen(true)}
+            className="border-zinc-700 text-zinc-300 hover:bg-zinc-800"
+          >
+            ＋ Adicionar jogo
+          </Button>
           <Button
             size="sm"
             variant="outline"
@@ -413,6 +474,71 @@ function TabResultados() {
           })}
         </div>
       )}
+
+      <Dialog open={addMatchOpen} onOpenChange={open => { setAddMatchOpen(open); if (!open) setNewMatch({ home_team_id: '', away_team_id: '', kickoff_at: '', phase: '' }) }}>
+        <DialogContent className="bg-zinc-900 border-zinc-800 text-zinc-50">
+          <DialogHeader>
+            <DialogTitle>Adicionar jogo</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="flex flex-col gap-1">
+              <Label className="text-xs text-zinc-400">Time da casa</Label>
+              <select
+                value={newMatch.home_team_id}
+                onChange={e => setNewMatch(f => ({ ...f, home_team_id: e.target.value }))}
+                className={SELECT_CLASS + ' w-full'}
+              >
+                <option value="">Selecione...</option>
+                {teams.map(t => (
+                  <option key={t.id} value={t.id}>{t.name}</option>
+                ))}
+              </select>
+            </div>
+            <div className="flex flex-col gap-1">
+              <Label className="text-xs text-zinc-400">Time visitante</Label>
+              <select
+                value={newMatch.away_team_id}
+                onChange={e => setNewMatch(f => ({ ...f, away_team_id: e.target.value }))}
+                className={SELECT_CLASS + ' w-full'}
+              >
+                <option value="">Selecione...</option>
+                {teams.map(t => (
+                  <option key={t.id} value={t.id}>{t.name}</option>
+                ))}
+              </select>
+            </div>
+            <div className="flex flex-col gap-1">
+              <Label className="text-xs text-zinc-400">Data e hora</Label>
+              <input
+                type="datetime-local"
+                value={newMatch.kickoff_at}
+                onChange={e => setNewMatch(f => ({ ...f, kickoff_at: e.target.value }))}
+                className={SELECT_CLASS + ' w-full'}
+              />
+            </div>
+            <div className="flex flex-col gap-1">
+              <Label className="text-xs text-zinc-400">Fase</Label>
+              <select
+                value={newMatch.phase}
+                onChange={e => setNewMatch(f => ({ ...f, phase: e.target.value }))}
+                className={SELECT_CLASS + ' w-full'}
+              >
+                <option value="">Selecione...</option>
+                {PHASES.map(p => (
+                  <option key={p.value} value={p.value}>{p.label}</option>
+                ))}
+              </select>
+            </div>
+            <Button
+              onClick={adicionarJogo}
+              disabled={addingMatch}
+              className="w-full bg-emerald-500 hover:bg-emerald-600 text-white"
+            >
+              {addingMatch ? <Loader2 className="size-4 animate-spin" /> : 'Salvar jogo'}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
