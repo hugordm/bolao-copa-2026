@@ -109,12 +109,11 @@ type ScoreState = {
 }
 
 const PHASES = [
-  { value: 'groups', label: 'Fase de Grupos' },
-  { value: 'r32', label: 'Rodada de 32' },
-  { value: 'r16', label: 'Oitavas de final' },
-  { value: 'qf', label: 'Quartas de final' },
-  { value: 'sf', label: 'Semifinal' },
-  { value: '3rd', label: '3º lugar' },
+  { value: 'groups', label: 'Grupos' },
+  { value: 'r32', label: '32 avos' },
+  { value: 'r16', label: 'Oitavas' },
+  { value: 'qf', label: 'Quartas' },
+  { value: 'sf', label: 'Semifinais' },
   { value: 'final', label: 'Final' },
 ]
 
@@ -138,6 +137,7 @@ function TabResultados() {
   const [addMatchOpen, setAddMatchOpen] = useState(false)
   const [newMatch, setNewMatch] = useState<NewMatchForm>({ home_team_id: '', away_team_id: '', kickoff_at: '', phase: '' })
   const [addingMatch, setAddingMatch] = useState(false)
+  const [phaseFilter, setPhaseFilter] = useState('')
 
   async function load() {
     const supabase = createClient()
@@ -315,13 +315,14 @@ function TabResultados() {
     }
   }
 
-  const filtered = matches.filter(
-    m =>
+  const filtered = matches.filter(m => {
+    if (phaseFilter && m.phase !== phaseFilter) return false
+    return (
       !filter ||
       m.home_team.name.toLowerCase().includes(filter.toLowerCase()) ||
-      m.away_team.name.toLowerCase().includes(filter.toLowerCase()) ||
-      m.phase.toLowerCase().includes(filter.toLowerCase())
-  )
+      m.away_team.name.toLowerCase().includes(filter.toLowerCase())
+    )
+  })
 
   return (
     <div className="space-y-4">
@@ -333,7 +334,10 @@ function TabResultados() {
           <Button
             size="sm"
             variant="outline"
-            onClick={() => setAddMatchOpen(true)}
+            onClick={() => {
+              setNewMatch({ home_team_id: '', away_team_id: '', kickoff_at: '', phase: phaseFilter })
+              setAddMatchOpen(true)
+            }}
             className="border-zinc-700 text-zinc-300 hover:bg-zinc-800"
           >
             ＋ Adicionar jogo
@@ -358,10 +362,26 @@ function TabResultados() {
           </Button>
         </div>
       </div>
+      <div className="flex gap-1.5 overflow-x-auto pb-1 -mx-1 px-1">
+        {[{ value: '', label: 'Todas' }, ...PHASES].map(p => (
+          <button
+            key={p.value}
+            type="button"
+            onClick={() => setPhaseFilter(p.value)}
+            className={`shrink-0 rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
+              phaseFilter === p.value
+                ? 'border-emerald-500 bg-emerald-500/20 text-emerald-400'
+                : 'border-zinc-700 bg-zinc-800 text-zinc-400 hover:border-zinc-500 hover:text-zinc-200'
+            }`}
+          >
+            {p.label}
+          </button>
+        ))}
+      </div>
       <div className="relative">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-zinc-500" />
         <Input
-          placeholder="Filtrar por time ou fase..."
+          placeholder="Filtrar por time..."
           value={filter}
           onChange={e => setFilter(e.target.value)}
           className="pl-9 bg-zinc-800 border-zinc-700 text-zinc-50 h-10"
