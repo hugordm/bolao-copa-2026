@@ -59,11 +59,19 @@ export default function CompetidoresPage() {
   const [participantes, setParticipantes] = useState<Participante[]>([])
   const [currentUserId, setCurrentUserId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  const [finalEncerrada, setFinalEncerrada] = useState(false)
   const contagem = useContagem()
 
   const fetchRanking = useCallback(async () => {
     const supabase = createClient()
-    const { data } = await supabase.rpc('get_ranking_completo') as { data: Participante[] | null }
+    const [rpcResult, { data: finalData }] = await Promise.all([
+      supabase.rpc('get_ranking_completo'),
+      supabase.from('matches').select('id').eq('phase', 'final').eq('is_finished', true).limit(1),
+    ])
+    const data = rpcResult.data as Participante[] | null
+
+    setFinalEncerrada((finalData ?? []).length > 0)
+
     if (data) {
       setParticipantes(data)
     } else {
@@ -110,6 +118,7 @@ export default function CompetidoresPage() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'bets' }, fetchRanking)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'group_order_bets' }, fetchRanking)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'special_bets' }, fetchRanking)
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'matches' }, fetchRanking)
       .subscribe()
 
     return () => { supabase.removeChannel(channel) }
@@ -122,9 +131,15 @@ export default function CompetidoresPage() {
     <div className="max-w-2xl mx-auto px-4 py-6">
       <div className="mb-6 text-center">
         <h1 className="text-2xl font-black text-zinc-50">🏆 Bolão da Copa 2026</h1>
-        <p className="mt-1 text-sm text-zinc-400">
-          Copa começa em: <span className="font-mono font-bold text-emerald-400">{contagem}</span>
-        </p>
+        {finalEncerrada ? (
+          <p className="mt-1 text-sm font-semibold text-yellow-400">
+            🏆 Fim de jogo! Confira o resultado final!
+          </p>
+        ) : (
+          <p className="mt-1 text-sm text-zinc-400">
+            Copa começa em: <span className="font-mono font-bold text-emerald-400">{contagem}</span>
+          </p>
+        )}
       </div>
 
       {loading ? (
@@ -138,6 +153,7 @@ export default function CompetidoresPage() {
           {participantes.map((p, i) => {
             const isLeader = i === 0
             const isMe = p.id === currentUserId
+            const isCampeao = isLeader && finalEncerrada
             return (
               <motion.div
                 key={p.id}
@@ -145,7 +161,9 @@ export default function CompetidoresPage() {
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: i * 0.05, duration: 0.3 }}
                 className={`relative flex items-center gap-4 rounded-xl border px-4 py-3 ${
-                  isLeader
+                  isCampeao
+                    ? 'border-yellow-400 bg-yellow-500/10 shadow-[0_0_24px_rgba(234,179,8,0.25)]'
+                    : isLeader
                     ? 'border-yellow-500/50 bg-yellow-500/5'
                     : 'border-zinc-800 bg-zinc-900'
                 }`}
@@ -163,8 +181,18 @@ export default function CompetidoresPage() {
                 {/* Nome + badges */}
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <span className="font-semibold text-zinc-50 truncate">{p.name}</span>
-                    {isLeader && (
+                    <span className={`font-semibold truncate ${isCampeao ? 'text-yellow-300' : 'text-zinc-50'}`}>
+                      {p.name}
+                    </span>
+                    {isCampeao ? (
+                      <motion.span
+                        animate={{ scale: [1, 1.08, 1], opacity: [1, 0.8, 1] }}
+                        transition={{ repeat: Infinity, duration: 1.8 }}
+                        className="rounded-full bg-yellow-500 px-2 py-0.5 text-xs font-bold text-zinc-900"
+                      >
+                        🏆 Campeão do Bolão
+                      </motion.span>
+                    ) : isLeader ? (
                       <motion.span
                         animate={{ opacity: [1, 0.4, 1] }}
                         transition={{ repeat: Infinity, duration: 1.5 }}
@@ -172,7 +200,7 @@ export default function CompetidoresPage() {
                       >
                         LÍDER
                       </motion.span>
-                    )}
+                    ) : null}
                     {isMe && (
                       <span className="rounded-full bg-blue-500 px-2 py-0.5 text-xs font-bold text-white">
                         VOCÊ
@@ -183,7 +211,9 @@ export default function CompetidoresPage() {
 
                 {/* Pontuação */}
                 <div className="text-right shrink-0">
-                  <p className="text-lg font-black text-zinc-50">{p.total_points}</p>
+                  <p className={`text-lg font-black ${isCampeao ? 'text-yellow-300' : 'text-zinc-50'}`}>
+                    {p.total_points}
+                  </p>
                   <p className="text-xs text-zinc-500">pontos</p>
                 </div>
               </motion.div>

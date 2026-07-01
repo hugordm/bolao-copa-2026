@@ -149,7 +149,7 @@ function TabResultados() {
         )
         .order('kickoff_at'),
       supabase.from('score_config').select('last_sync').order('updated_at', { ascending: false }).limit(1).single(),
-      supabase.from('teams').select('id, name').order('name'),
+      supabase.from('teams').select('id, name').eq('is_eliminated', false).order('name'),
     ])
     if (teamsData) setTeams(teamsData)
 
