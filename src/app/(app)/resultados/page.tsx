@@ -9,7 +9,7 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/
 
 type Time = { name: string; flag_url: string | null }
 
-type Phase = 'groups' | 'r32' | 'r16' | 'qf' | 'sf' | 'final'
+type Phase = 'groups' | 'r32' | 'r16' | 'qf' | 'sf' | 'third_place' | 'final'
 
 type Match = {
   id: string
@@ -33,6 +33,7 @@ const PHASES: { value: Phase; label: string }[] = [
   { value: 'r16', label: '16 avos de final (Oitavas)' },
   { value: 'qf', label: 'Quartas de final' },
   { value: 'sf', label: 'Semifinais' },
+  { value: 'third_place', label: '3º Lugar' },
   { value: 'final', label: 'Final' },
 ]
 
@@ -124,9 +125,15 @@ function MatchCard({ match, now }: { match: Match; now: number }) {
   return (
     <div className="rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2.5">
       <div className="flex items-center justify-between gap-2 mb-2">
-        <span className="text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
-          {match.group_name ? `Gr. ${match.group_name}` : ' '}
-        </span>
+        {match.phase === 'third_place' ? (
+          <Badge className="bg-amber-700/20 text-amber-500 border-amber-700/40 text-[10px]">
+            🥉 Disputa pelo 3º Lugar
+          </Badge>
+        ) : (
+          <span className="text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
+            {match.group_name ? `Gr. ${match.group_name}` : ' '}
+          </span>
+        )}
         <StatusBadge match={match} now={now} />
       </div>
       <div className="flex items-center gap-2">

@@ -121,6 +121,7 @@ const PHASES = [
   { value: 'r16', label: 'Oitavas' },
   { value: 'qf', label: 'Quartas' },
   { value: 'sf', label: 'Semifinais' },
+  { value: 'third_place', label: '3º Lugar' },
   { value: 'final', label: 'Final' },
 ]
 
@@ -408,6 +409,11 @@ function TabResultados() {
                   <p className="text-xs text-zinc-500 flex-1">
                     {m.phase}{m.group_name ? ` · Gr.${m.group_name}` : ''} · {formatDateTime(m.kickoff_at)}
                   </p>
+                  {m.phase === 'third_place' && (
+                    <Badge className="bg-amber-700/20 text-amber-500 border-amber-700/40 text-[10px] shrink-0">
+                      🥉 Disputa pelo 3º Lugar
+                    </Badge>
+                  )}
                   {m.manually_edited && (
                     <Badge className="bg-amber-500/20 text-amber-400 border-amber-500/30 text-[10px] shrink-0">
                       Editado manualmente
