@@ -6,9 +6,10 @@ import type { SupabaseClient } from '@supabase/supabase-js'
  * any of the tied top scorers (0 otherwise) and locks them. Used both by
  * the manual admin action and by sync/grupos when a team is eliminated.
  *
- * Only settles bets once the team is actually eliminated — while a team is
- * still in the tournament its top scorer can keep changing, so bets must
- * stay unlocked with points_earned at 0 (shown as "Pendente" in the UI).
+ * Only settles bets once the team is out of the tournament — eliminated or
+ * crowned champion. While a team is still playing its top scorer can keep
+ * changing, so bets must stay unlocked with points_earned at 0 (shown as
+ * "Pendente" in the UI).
  *
  * In case of a tie (multiple players with the same goals), any bet that
  * picked one of the tied players counts as a correct guess.
@@ -19,11 +20,14 @@ export async function apurarArtilheiroSelecao(
 ): Promise<{ winner: string | null; winnerId: string | null; betsCalculated: number }> {
   const { data: team } = await supabase
     .from('teams')
-    .select('is_eliminated')
+    .select('is_eliminated, final_position')
     .eq('id', teamId)
     .single()
 
-  if (!team?.is_eliminated) {
+  // A team's top scorer is only final once it can no longer play: eliminated
+  // or crowned champion (the champion isn't flagged as eliminated).
+  const outOfTournament = team?.is_eliminated || team?.final_position === 'champion'
+  if (!outOfTournament) {
     return { winner: null, winnerId: null, betsCalculated: 0 }
   }
 

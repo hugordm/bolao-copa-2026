@@ -17,6 +17,12 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import type { ScoreConfig } from '@/lib/types'
+import {
+  FINAL_STATUS_META,
+  FINAL_STATUS_ORDER,
+  finalStatusOf,
+  type FinalStatus,
+} from '@/lib/final-position'
 
 const SELECT_CLASS =
   'h-9 rounded-lg border border-zinc-700 bg-zinc-800 px-2.5 text-sm text-zinc-50 outline-none focus-visible:ring-3 focus-visible:ring-ring/50'
@@ -85,6 +91,7 @@ type TeamElim = {
   name: string
   flag_url: string | null
   is_eliminated: boolean
+  final_position: string | null
 }
 
 type UserRow = {
@@ -852,33 +859,46 @@ function TabArtilharia() {
 function TabGruposElim() {
   const [teams, setTeams] = useState<TeamElim[]>([])
   const [saving, setSaving] = useState<Record<string, boolean>>({})
+  const [selected, setSelected] = useState<TeamElim | null>(null)
 
   useEffect(() => {
     const supabase = createClient()
     supabase
       .from('teams')
-      .select('id, name, flag_url, is_eliminated')
+      .select('id, name, flag_url, is_eliminated, final_position')
       .order('name')
       .then(({ data }) => data && setTeams(data))
   }, [])
 
-  async function toggleElim(team: TeamElim) {
+  async function setStatus(team: TeamElim, status: FinalStatus) {
+    setSelected(null)
     setSaving(s => ({ ...s, [team.id]: true }))
     try {
-      const supabase = createClient()
-      const novo = !team.is_eliminated
-      const { error } = await supabase
-        .from('teams')
-        .update({ is_eliminated: novo })
-        .eq('id', team.id)
-      if (error) throw error
-      setTeams(ts => ts.map(t => t.id === team.id ? { ...t, is_eliminated: novo } : t))
+      const data = await postJson('/api/admin/marcar-status-final', {
+        team_id: team.id,
+        status,
+      })
 
-      if (novo) {
-        const data = await postJson('/api/admin/apurar-artilheiro-selecao', { team_id: team.id })
-        toast.success(`${team.name} eliminada — artilheiro: ${data.winner ?? '—'}`)
+      // Reflect the server-side team row change locally.
+      const nextEliminated = status !== 'active' && status !== 'champion'
+      const nextPosition = status === 'active' ? null : status
+      setTeams(ts =>
+        ts.map(t =>
+          t.id === team.id
+            ? { ...t, is_eliminated: nextEliminated, final_position: nextPosition }
+            : t
+        )
+      )
+
+      const meta = FINAL_STATUS_META[status]
+      if (status === 'active') {
+        toast.success(`${team.name} marcada como ativa`)
+      } else if (status === 'champion') {
+        toast.success(
+          `${team.name} é a campeã! ${data.champion_bets_calculated} palpite(s) apurados — artilheiro: ${data.winner ?? '—'}`
+        )
       } else {
-        toast.success(`${team.name} reativada`)
+        toast.success(`${team.name}: ${meta.label} — artilheiro: ${data.winner ?? '—'}`)
       }
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : 'Erro ao atualizar')
@@ -888,32 +908,78 @@ function TabGruposElim() {
   }
 
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-      {teams.map(t => (
-        <button
-          key={t.id}
-          onClick={() => toggleElim(t)}
-          disabled={saving[t.id]}
-          className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-left transition-colors ${
-            t.is_eliminated
-              ? 'border-red-500/50 bg-red-500/10 opacity-60'
-              : 'border-zinc-700 bg-zinc-800 hover:border-zinc-600'
-          }`}
-        >
-          {t.flag_url ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={t.flag_url} alt="" className="size-6 rounded-full object-cover" />
-          ) : (
-            <span className="text-lg">🏳️</span>
-          )}
-          <div className="min-w-0">
-            <p className="text-xs font-medium text-zinc-200 truncate">{t.name}</p>
-            {t.is_eliminated && <p className="text-xs text-red-400">Eliminada</p>}
+    <>
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+        {teams.map(t => {
+          const meta = FINAL_STATUS_META[finalStatusOf(t)]
+          const isActive = meta.status === 'active'
+          return (
+            <button
+              key={t.id}
+              onClick={() => setSelected(t)}
+              disabled={saving[t.id]}
+              className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-left transition-colors ${
+                isActive
+                  ? 'border-zinc-700 bg-zinc-800 hover:border-zinc-600'
+                  : 'border-zinc-600 bg-zinc-800/60 hover:border-zinc-500'
+              }`}
+            >
+              {t.flag_url ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={t.flag_url} alt="" className="size-6 rounded-full object-cover" />
+              ) : (
+                <span className="text-lg">🏳️</span>
+              )}
+              <div className="min-w-0">
+                <p className="text-xs font-medium text-zinc-200 truncate">{t.name}</p>
+                {!isActive && (
+                  <p className="text-xs text-zinc-400">{meta.emoji} {meta.label}</p>
+                )}
+              </div>
+              {saving[t.id] && <Loader2 className="size-3 animate-spin ml-auto text-zinc-500" />}
+            </button>
+          )
+        })}
+      </div>
+
+      <Dialog open={!!selected} onOpenChange={open => !open && setSelected(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              {selected?.flag_url ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={selected.flag_url} alt="" className="size-6 rounded-full object-cover" />
+              ) : (
+                <span className="text-lg">🏳️</span>
+              )}
+              {selected?.name}
+            </DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-zinc-400">Definir o status final da seleção:</p>
+          <div className="grid gap-2">
+            {FINAL_STATUS_ORDER.map(status => {
+              const meta = FINAL_STATUS_META[status]
+              const current = selected ? finalStatusOf(selected) === status : false
+              return (
+                <button
+                  key={status}
+                  onClick={() => selected && setStatus(selected, status)}
+                  className={`flex items-center gap-3 rounded-lg border px-3 py-2 text-left text-sm transition-colors ${
+                    current
+                      ? 'border-emerald-500/50 bg-emerald-500/10 text-zinc-100'
+                      : 'border-zinc-700 bg-zinc-800 text-zinc-200 hover:border-zinc-600'
+                  }`}
+                >
+                  <span className="text-lg">{meta.emoji}</span>
+                  <span className="font-medium">{meta.label}</span>
+                  {current && <span className="ml-auto text-xs text-emerald-400">atual</span>}
+                </button>
+              )
+            })}
           </div>
-          {saving[t.id] && <Loader2 className="size-3 animate-spin ml-auto text-zinc-500" />}
-        </button>
-      ))}
-    </div>
+        </DialogContent>
+      </Dialog>
+    </>
   )
 }
 

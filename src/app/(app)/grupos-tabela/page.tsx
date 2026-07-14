@@ -5,6 +5,7 @@ import { motion } from 'framer-motion'
 import { createClient } from '@/lib/supabase/client'
 import { Badge } from '@/components/ui/badge'
 import { selecionarMelhoresTerceiros } from '@/lib/scoring'
+import { FINAL_STATUS_META, finalStatusOf } from '@/lib/final-position'
 
 type Time = { name: string; flag_url: string | null }
 
@@ -20,6 +21,8 @@ type StandingRow = {
   points: number
   position: number
   is_best_third: boolean
+  final_position: string | null
+  is_eliminated: boolean
 }
 
 type Grupo = {
@@ -62,7 +65,7 @@ export default function GruposTabelaPage() {
     const [{ data: teamsData }, { data: standingsData }, { data: matchesData }] = await Promise.all([
       supabase
         .from('teams')
-        .select('id, name, flag_url, group_name')
+        .select('id, name, flag_url, group_name, final_position, is_eliminated')
         .not('group_name', 'is', null)
         .order('group_name', { ascending: true })
         .order('name', { ascending: true }),
@@ -104,6 +107,8 @@ export default function GruposTabelaPage() {
         points: s?.points ?? 0,
         position: s?.position ?? 0,
         is_best_third: s?.is_best_third ?? false,
+        final_position: t.final_position ?? null,
+        is_eliminated: t.is_eliminated ?? false,
       }
       const list = groupMap.get(t.group_name) ?? []
       list.push(row)
@@ -128,6 +133,7 @@ export default function GruposTabelaPage() {
       .channel('grupos-tabela-realtime')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'group_standings' }, fetchStandings)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'matches' }, fetchStandings)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'teams' }, fetchStandings)
       .subscribe()
 
     return () => { supabase.removeChannel(channel) }
@@ -176,7 +182,19 @@ export default function GruposTabelaPage() {
                     let rowClass = ''
                     let badge: { text: string; className: string } | null = null
 
-                    if (!groupStageFinished) {
+                    // A final tournament status (champion / vice / 3rd / 4th /
+                    // eliminated) overrides the group-stage classification badge.
+                    const finalStatus = finalStatusOf(t)
+                    if (finalStatus !== 'active') {
+                      const meta = FINAL_STATUS_META[finalStatus]
+                      badge = { text: meta.badge, className: meta.badgeClass }
+                      rowClass =
+                        finalStatus === 'champion'
+                          ? 'bg-yellow-900/30 border-l-2 border-yellow-500'
+                          : finalStatus === 'eliminated'
+                            ? 'bg-red-900/40 border-l-2 border-red-500'
+                            : 'bg-zinc-800/40 border-l-2 border-zinc-500'
+                    } else if (!groupStageFinished) {
                       if (idx === 0 || idx === 1) {
                         rowClass = 'bg-emerald-500/5'
                       } else if (idx === 2) {
