@@ -97,8 +97,9 @@ export function mapZafronixStage(stage: string): Match['phase'] {
     case 'semi_final':
     case 'sf':
       return 'sf'
+    case 'third_place':
+      return 'third_place'
     default:
-      // 'final' and 'third_place' (no dedicated value in our phase enum).
       return 'final'
   }
 }

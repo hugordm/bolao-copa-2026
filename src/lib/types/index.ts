@@ -31,7 +31,7 @@ export type Match = {
   id: string
   home_team_id: string
   away_team_id: string
-  phase: 'groups' | 'r32' | 'r16' | 'qf' | 'sf' | 'final'
+  phase: 'groups' | 'r32' | 'r16' | 'qf' | 'sf' | 'third_place' | 'final'
   group_name: string | null
   kickoff_at: string
   home_score: number | null
