@@ -98,6 +98,64 @@ export async function recalcularTodosPontos(
   return { matches: matches.length, updatedBets }
 }
 
+/**
+ * Determines the tournament top scorer(s) and settles every `top_scorer`
+ * special bet: awards `pts_top_scorer` to bets that picked any of the tied top
+ * scorers (0 otherwise) and locks them.
+ *
+ * Unlike `apurarArtilheiroSelecao` (which is per team), this looks at ALL
+ * players in the tournament and picks the one(s) with the most
+ * `goals_in_tournament`. It should be run once the tournament is over (e.g. when
+ * the champion is crowned), since the top scorer can keep changing while any
+ * match is still to be played.
+ *
+ * In case of a tie (multiple players with the same top goal count), any bet that
+ * picked one of the tied players counts as a correct guess.
+ */
+export async function apurarArtilheiroCopa(
+  supabase: SupabaseClient
+): Promise<{ winner: string | null; winnerId: string | null; betsCalculated: number }> {
+  const { data: players } = await supabase
+    .from('players')
+    .select('id, name, goals_in_tournament')
+    .order('goals_in_tournament', { ascending: false })
+
+  const maxGoals = players?.[0]?.goals_in_tournament ?? 0
+  const topPlayers = maxGoals > 0
+    ? (players ?? []).filter(p => p.goals_in_tournament === maxGoals)
+    : []
+  const topPlayerIds = new Set(topPlayers.map(p => p.id))
+
+  const { data: config } = await supabase
+    .from('score_config')
+    .select('pts_top_scorer')
+    .order('updated_at', { ascending: false })
+    .limit(1)
+    .single()
+
+  const ptsTopScorer = config?.pts_top_scorer ?? 0
+
+  const { data: bets } = await supabase
+    .from('special_bets')
+    .select('id, player_id')
+    .eq('bet_type', 'top_scorer')
+
+  let betsCalculated = 0
+  for (const bet of bets ?? []) {
+    const points = bet.player_id && topPlayerIds.has(bet.player_id) ? ptsTopScorer : 0
+    const { error } = await supabase
+      .from('special_bets')
+      .update({ points_earned: points, is_locked: true })
+      .eq('id', bet.id)
+    if (!error) betsCalculated++
+  }
+
+  const winner = topPlayers.length > 0 ? topPlayers.map(p => p.name).join(' / ') : null
+  const winnerId = topPlayers.length === 1 ? topPlayers[0].id : null
+
+  return { winner, winnerId, betsCalculated }
+}
+
 type StandingRow = {
   team_id: string
   group_name: string

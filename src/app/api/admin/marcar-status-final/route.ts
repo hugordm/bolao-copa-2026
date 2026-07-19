@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { authorizeAdminRequest } from '@/lib/auth-admin'
 import { apurarArtilheiroSelecao } from '@/lib/artilheiro'
+import { apurarArtilheiroCopa } from '@/lib/scoring'
 
 export const dynamic = 'force-dynamic'
 
@@ -81,9 +82,17 @@ export async function POST(request: NextRequest) {
       .eq('id', team_id)
     if (updateError) throw updateError
 
+    // Crowning the champion is the last status marked, so the tournament is
+    // over: settle the champion pool and the tournament top scorer at once.
     let championBets = 0
+    let topScorer: { winner: string | null; betsCalculated: number } = {
+      winner: null,
+      betsCalculated: 0,
+    }
     if (status === 'champion') {
       championBets = await apurarCampeao(supabase, team_id)
+      const { winner, betsCalculated } = await apurarArtilheiroCopa(supabase)
+      topScorer = { winner, betsCalculated }
     }
 
     // Any status other than "active" means the team is out of the tournament,
@@ -101,6 +110,8 @@ export async function POST(request: NextRequest) {
       winner: scorer.winner,
       scorer_bets_calculated: scorer.betsCalculated,
       champion_bets_calculated: championBets,
+      top_scorer_winner: topScorer.winner,
+      top_scorer_bets_calculated: topScorer.betsCalculated,
     })
   } catch (err: unknown) {
     console.error('marcar-status-final error:', err)
